@@ -27,6 +27,13 @@ def _soffice(src: Path, fmt: str, lo: Path, *extra: str) -> Path:
     return src.with_suffix(f".{fmt}")
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _qapp_first(qapp):
+    """Create the QApplication before any code under test makes a bare
+    QCoreApplication, which would break widget tests later in the run."""
+    return qapp
+
+
 @pytest.fixture(scope="session")
 def masters(tmp_path_factory):
     return tmp_path_factory.mktemp("masters")
