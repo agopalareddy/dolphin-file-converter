@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QC
                                QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QGroupBox,
                                QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit,
                                QMainWindow, QMessageBox, QPlainTextEdit, QPushButton,
-                               QRadioButton,
+                               QRadioButton, QSizePolicy,
                                QStackedWidget, QStyle, QStyledItemDelegate,
                                QStyleOptionProgressBar, QTableView, QToolBar, QToolButton,
                                QVBoxLayout, QWidget)
@@ -27,6 +27,7 @@ from ..queue import FINISHED, JobQueue, JobState, OutputSettings
 from ..store import Store, save
 from .options_panel import OptionsPanel
 from .queue_model import COL_ACTIONS, COL_FILE, COL_PRESET, COL_STATUS, QueueModel
+from .settings_dialog import SettingsDialog
 
 _CLASH_LABELS = (("Add a number", "rename"), ("Replace it", "overwrite"), ("Skip it", "skip"))
 _EDITABLE = (JobState.PENDING, *FINISHED)
@@ -108,6 +109,12 @@ class MainWindow(QMainWindow):
         clear.triggered.connect(self.queue.clear_finished)
         toolbar.addAction(add)
         toolbar.addAction(clear)
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        toolbar.addWidget(spacer)
+        settings = QAction(QIcon.fromTheme("configure"), "Settings", self)
+        settings.triggered.connect(self.open_settings)
+        toolbar.addAction(settings)
         self.toolbar = toolbar
 
         self.model = QueueModel(queue, self)
@@ -398,6 +405,12 @@ class MainWindow(QMainWindow):
         layout.addWidget(buttons)
         dialog.resize(640, 400)
         dialog.exec()
+
+    def open_settings(self) -> None:
+        if SettingsDialog(self.store, self).exec():
+            self.queue.workers = self.store.settings.workers()
+            self._output_changed()  # pending jobs pick up the Trash setting
+            self._sync_panel()
 
     def closeEvent(self, event) -> None:
         active = self.queue.active_count()
