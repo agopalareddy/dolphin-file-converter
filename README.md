@@ -1,75 +1,147 @@
-# File Converter for Dolphin
+# dolphin-file-converter
 
-Right-click any file in Dolphin and pick **Convert to → format**. Inspired by
-[Tichau/FileConverter](https://github.com/Tichau/FileConverter) on Windows,
-rebuilt for KDE Plasma as a small shell script and a set of service menus.
+[![standard-readme compliant](https://img.shields.io/badge/readme%20style-standard-brightgreen.svg)](https://github.com/RichardLitt/standard-readme)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-- Works on many files at once, with a progress dialog and a Cancel button
-- Output is saved next to the original and never overwrites anything
-  (`name (1).ext` instead)
-- A notification when the batch is done; failures keep a log in
-  `~/.local/state/fileconvert/`
+Convert audio, video, images and documents from Dolphin's right-click menu or a drag-and-drop window.
 
-## Formats
+The app is called File Converter on your desktop. Right-click files in Dolphin and pick
+**Convert to → MP3**, or **Convert…** to open the window, where you can queue files, pick a format per file, adjust quality, and save your
+own presets. Your presets show up in the right-click menu too. Under the hood it runs
+ffmpeg, ImageMagick and LibreOffice, so it converts whatever those tools can read.
 
-| Right-click on | Convert to |
-|---|---|
-| Audio | MP3, AAC (M4A), OGG Vorbis, Opus, FLAC, WAV |
-| Video | MP4 (H.264), MP4 (smaller file), WebM (VP9), MKV (no re-encode), animated GIF, plus MP3 / AAC / FLAC audio only |
-| Images | PNG, JPG, WebP, AVIF, GIF, ICO, PDF |
-| Word documents (DOC, DOCX, ODT, RTF) | PDF, DOCX, ODT |
-| Spreadsheets (XLS, XLSX, ODS, CSV) | PDF, XLSX, ODS, CSV |
-| Presentations (PPT, PPTX, ODP) | PDF, PPTX, ODP |
-| PDF | PNG or JPG, one image per page |
+![File Converter window with a queue of five files: two done, one failed, one converting at 9%, one ready](docs/screenshot.png)
 
-## Requirements
+## Table of Contents
 
-KDE Plasma 6 with Dolphin, plus:
+- [Background](#background)
+- [Install](#install)
+  - [Dependencies](#dependencies)
+- [Usage](#usage)
+  - [Formats](#formats)
+  - [CLI](#cli)
+- [Maintainers](#maintainers)
+- [Contributing](#contributing)
+- [License](#license)
 
-| Tool | Used for | Arch | Debian / Ubuntu | Fedora |
-|---|---|---|---|---|
-| ffmpeg | audio, video | `ffmpeg` | `ffmpeg` | `ffmpeg` (RPM Fusion) |
-| ImageMagick 7 | images, PDF pages | `imagemagick` | `imagemagick` | `ImageMagick` |
-| Ghostscript | PDF pages | `ghostscript` | `ghostscript` | `ghostscript` |
-| LibreOffice | documents | `libreoffice-fresh` | `libreoffice` | `libreoffice` |
-| kdialog, qdbus | progress dialog | `kdialog`, `qt6-tools` | `kdialog`, `qdbus-qt6` | `kdialog`, `qt6-qttools` |
+## Background
 
-You only need the tools for the formats you use. ImageMagick 7 is required
-because the script calls `magick`; Debian and Ubuntu releases that ship
-ImageMagick 6 won't work for images.
+[FileConverter](https://github.com/Tichau/FileConverter) is a popular Windows tool that
+adds a "convert to" entry to Explorer's context menu. This project brings the same idea to
+KDE Plasma, built with Qt so it looks and behaves like the rest of the desktop.
+
+Converted files are written next to the original (or a folder you choose) and an existing
+file is never overwritten unless you ask for that. Each conversion runs in a hidden
+temporary folder and only moves into place once it has finished, so a cancelled or failed
+conversion never leaves half-written files behind. The optional "move originals to the
+Trash" setting only ever moves files to the Trash, and only after a successful conversion.
 
 ## Install
 
-```bash
+Install the [dependencies](#dependencies), then:
+
+```sh
 git clone https://github.com/agopalareddy/dolphin-file-converter.git
 cd dolphin-file-converter
 ./install.sh
 ```
 
-This symlinks `fileconvert` into `~/.local/bin` and the service menus into
-`~/.local/share/kio/servicemenus`. Open a new Dolphin window and right-click
-a file. `~/.local/bin` must be on your session `PATH` (it is by default on
-most distros).
+`install.sh` installs for your user only. It puts the `fileconverter` and `fileconvert`
+commands in `~/.local/bin`, adds File Converter to the application launcher, and adds the
+right-click menus to Dolphin. It runs the app from the cloned folder, so keep that folder
+where it is. To remove everything it installed:
 
-To remove it:
-
-```bash
+```sh
 ./install.sh --uninstall
 ```
 
-## Command line
+An AUR package for Arch Linux is being prepared in [`packaging/aur`](packaging/aur/PKGBUILD).
 
-The script works on its own too:
+### Dependencies
 
-```bash
+KDE Plasma 6 with Dolphin, Python 3.11 or newer, and PySide6. The conversion tools are
+optional: formats whose tool is missing are greyed out in the app.
+
+| Package | Used for | Arch | Debian / Ubuntu | Fedora |
+|---|---|---|---|---|
+| PySide6 | the app | `pyside6` | `python3-pyside6.qtwidgets` `python3-pyside6.qtnetwork` `python3-pyside6.qtdbus` | `python3-pyside6` |
+| ffmpeg | audio, video | `ffmpeg` | `ffmpeg` | `ffmpeg` (RPM Fusion) |
+| ImageMagick 7 | images, PDF pages | `imagemagick` | see note | `ImageMagick` |
+| Ghostscript | PDF pages | `ghostscript` | `ghostscript` | `ghostscript` |
+| LibreOffice | documents | `libreoffice-fresh` | `libreoffice` | `libreoffice` |
+| libnotify | "finished" notification | `libnotify` | `libnotify-bin` | `libnotify` |
+
+Image conversion needs ImageMagick 7, which provides the `magick` command. Debian and
+Ubuntu still ship ImageMagick 6, so image and PDF-page formats stay disabled there unless
+you install ImageMagick 7 another way.
+
+## Usage
+
+Right-click one or more files in Dolphin:
+
+- **Convert to → _format_** converts straight away and shows the progress in the window.
+- **Convert…** opens the window with the files added, so you can choose formats and
+  options first.
+
+You can also open File Converter from the application launcher and drag files or whole
+folders into it. Converting more files while it is open adds them to the same window.
+
+In the window:
+
+- **Convert to** sets the format for a row; select several rows to change them together.
+- **Options** shows the settings that apply to the selected format: quality, maximum video
+  size, trim start and end, image resize, removing metadata, and PDF resolution.
+- **Save as preset…** stores the current format and options under a name. Saved presets
+  appear in every format list and in Dolphin's right-click menu.
+- **Output** chooses the folder, the file name pattern (`{name}`, `{preset}`, `{date}`)
+  and what to do when a file with that name already exists.
+- **Settings** sets how many files convert at once, turns on moving originals to the
+  Trash, and manages presets, including which ones appear in the right-click menu.
+
+### Formats
+
+| Right-click on | Convert to |
+|---|---|
+| Audio | MP3, AAC (M4A), OGG Vorbis, Opus, FLAC, WAV |
+| Video | MP4 (H.264), MP4 (smaller file), WebM (VP9), MKV (no re-encode), animated GIF, and MP3 / AAC / FLAC audio only |
+| Images | PNG, JPG, WebP, AVIF, GIF, ICO, PDF |
+| Documents (DOC, DOCX, ODT, RTF) | PDF, DOCX, ODT |
+| Spreadsheets (XLS, XLSX, ODS, CSV) | PDF, XLSX, ODS, CSV (first sheet) |
+| Presentations (PPT, PPTX, ODP) | PDF, PPTX, ODP |
+| PDF | PNG or JPG, one image per page |
+
+### CLI
+
+`fileconvert` converts without opening a window, using the same presets, including your
+own:
+
+```sh
 fileconvert video:webm clip.mp4 other.mov
-FILECONVERT_NOGUI=1 fileconvert image:webp *.png
+fileconvert user:whatsapp-video holiday.mp4
 ```
 
-Run `fileconvert` with no arguments to list every preset. To change quality
-settings or add a format, edit the `case` block at the top of `fileconvert`
-and add a matching `[Desktop Action]` to the file in `servicemenus/`.
+Run `fileconvert` with no arguments to list every preset id. It uses the output folder,
+name pattern and clash rule saved by the app, and exits with status 1 if any file failed.
+
+`fileconverter [--preset ID] [FILE...]` opens the window, optionally with files queued and
+already converting.
+
+## Maintainers
+
+[@agopalareddy](https://github.com/agopalareddy)
+
+## Contributing
+
+Questions and bug reports are welcome in [GitHub issues](https://github.com/agopalareddy/dolphin-file-converter/issues).
+For a failed conversion, include the text from the **?** button next to the file.
+
+Pull requests are welcome. Please run the tests first; they need ffmpeg, ImageMagick and
+LibreOffice installed, and skip the parts whose tool is missing:
+
+```sh
+QT_QPA_PLATFORM=offscreen python -m pytest
+```
 
 ## License
 
-MIT
+[MIT](LICENSE) © Aadarsha Gopala Reddy
