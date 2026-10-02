@@ -57,21 +57,22 @@ def _p(pid: str, name: str, inputs: tuple[str, ...], fmt: str | None = None,
 
 
 BUILTINS: tuple[Preset, ...] = (
-    _p("audio:mp3", "MP3", _MEDIA),
-    _p("audio:aac", "AAC (M4A)", _MEDIA),
-    _p("audio:ogg", "OGG Vorbis", _MEDIA),
-    _p("audio:opus", "Opus", _MEDIA),
+    # Quality values map exactly onto the bash script's encoder settings.
+    _p("audio:mp3", "MP3", _MEDIA, quality=78),
+    _p("audio:aac", "AAC (M4A)", _MEDIA, quality=50),
+    _p("audio:ogg", "OGG Vorbis", _MEDIA, quality=50),
+    _p("audio:opus", "Opus", _MEDIA, quality=38),
     _p("audio:flac", "FLAC", _MEDIA),
     _p("audio:wav", "WAV", _MEDIA),
-    _p("video:mp4", "MP4 (H.264)", ("video",)),
-    _p("video:mp4-small", "MP4 (smaller file)", ("video",), "mp4"),
-    _p("video:webm", "WebM (VP9)", ("video",)),
+    _p("video:mp4", "MP4 (H.264)", ("video",), quality=79),
+    _p("video:mp4-small", "MP4 (smaller file)", ("video",), "mp4", quality=37),
+    _p("video:webm", "WebM (VP9)", ("video",), quality=52),
     _p("video:mkv", "MKV (no re-encode)", ("video",)),
     _p("video:gif", "Animated GIF", ("video",)),
     _p("image:png", "PNG", ("image",)),
-    _p("image:jpg", "JPG", ("image",)),
-    _p("image:webp", "WebP", ("image",)),
-    _p("image:avif", "AVIF", ("image",)),
+    _p("image:jpg", "JPG", ("image",), quality=90),
+    _p("image:webp", "WebP", ("image",), quality=90),
+    _p("image:avif", "AVIF", ("image",), quality=70),
     _p("image:gif", "GIF", ("image",)),
     _p("image:ico", "ICO (icon)", ("image",)),
     _p("image:pdf", "PDF", ("image",)),
@@ -83,8 +84,8 @@ BUILTINS: tuple[Preset, ...] = (
     _p("office:csv", "CSV (first sheet)", _SHEET),
     _p("office:pptx", "PowerPoint (PPTX)", _SLIDES),
     _p("office:odp", "OpenDocument (ODP)", _SLIDES),
-    _p("pdf:png", "PNG (one per page)", ("pdf",)),
-    _p("pdf:jpg", "JPG (one per page)", ("pdf",)),
+    _p("pdf:png", "PNG (one per page)", ("pdf",), pdf_dpi=150),
+    _p("pdf:jpg", "JPG (one per page)", ("pdf",), pdf_dpi=150, quality=90),
 )
 
 BUILTIN_BY_ID: dict[str, Preset] = {p.id: p for p in BUILTINS}
