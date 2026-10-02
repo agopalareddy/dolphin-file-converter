@@ -84,7 +84,7 @@ without Qt or any conversion tool installed.
 ```
 
 - Categories: `audio`, `video`, `image`, `office`, `pdf`.
-- Built-in presets reproduce today's 29 presets exactly, with ids such as
+- Built-in presets reproduce today's 28 presets exactly, with ids such as
   `audio:mp3`, `video:mp4-small`. They are read-only; "Duplicate" creates an
   editable user copy.
 - User presets live in `~/.config/dolphin-file-converter/presets.json`
