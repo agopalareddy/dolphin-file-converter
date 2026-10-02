@@ -1,0 +1,47 @@
+[Desktop Entry]
+Type=Service
+MimeType=video/*;
+Actions=mp4;mp4-small;webm;mkv;gif;_SEPARATOR_;mp3;aac;flac;
+X-KDE-Submenu=Convert to
+X-KDE-Priority=TopLevel
+Icon=document-export
+
+[Desktop Action mp4]
+Name=MP4 (H.264)
+Icon=video-x-generic
+Exec=fileconvert video:mp4 %F
+
+[Desktop Action mp4-small]
+Name=MP4 (smaller file)
+Icon=video-x-generic
+Exec=fileconvert video:mp4-small %F
+
+[Desktop Action webm]
+Name=WebM (VP9)
+Icon=video-x-generic
+Exec=fileconvert video:webm %F
+
+[Desktop Action mkv]
+Name=MKV (no re-encode)
+Icon=video-x-generic
+Exec=fileconvert video:mkv %F
+
+[Desktop Action gif]
+Name=Animated GIF
+Icon=image-gif
+Exec=fileconvert video:gif %F
+
+[Desktop Action mp3]
+Name=MP3 (audio only)
+Icon=audio-x-generic
+Exec=fileconvert audio:mp3 %F
+
+[Desktop Action aac]
+Name=AAC (audio only)
+Icon=audio-x-generic
+Exec=fileconvert audio:aac %F
+
+[Desktop Action flac]
+Name=FLAC (audio only)
+Icon=audio-x-generic
+Exec=fileconvert audio:flac %F

@@ -1,0 +1,42 @@
+[Desktop Entry]
+Type=Service
+MimeType=image/*;
+Actions=png;jpg;webp;avif;gif;ico;pdf;
+X-KDE-Submenu=Convert to
+X-KDE-Priority=TopLevel
+Icon=document-export
+
+[Desktop Action png]
+Name=PNG
+Icon=image-png
+Exec=fileconvert image:png %F
+
+[Desktop Action jpg]
+Name=JPG
+Icon=image-jpeg
+Exec=fileconvert image:jpg %F
+
+[Desktop Action webp]
+Name=WebP
+Icon=image-x-generic
+Exec=fileconvert image:webp %F
+
+[Desktop Action avif]
+Name=AVIF
+Icon=image-x-generic
+Exec=fileconvert image:avif %F
+
+[Desktop Action gif]
+Name=GIF
+Icon=image-gif
+Exec=fileconvert image:gif %F
+
+[Desktop Action ico]
+Name=ICO (icon)
+Icon=image-x-ico
+Exec=fileconvert image:ico %F
+
+[Desktop Action pdf]
+Name=PDF
+Icon=application-pdf
+Exec=fileconvert image:pdf %F

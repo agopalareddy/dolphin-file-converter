@@ -1,0 +1,37 @@
+[Desktop Entry]
+Type=Service
+MimeType=audio/*;
+Actions=mp3;aac;ogg;opus;flac;wav;
+X-KDE-Submenu=Convert to
+X-KDE-Priority=TopLevel
+Icon=document-export
+
+[Desktop Action mp3]
+Name=MP3
+Icon=audio-x-generic
+Exec=fileconvert audio:mp3 %F
+
+[Desktop Action aac]
+Name=AAC (M4A)
+Icon=audio-x-generic
+Exec=fileconvert audio:aac %F
+
+[Desktop Action ogg]
+Name=OGG Vorbis
+Icon=audio-x-generic
+Exec=fileconvert audio:ogg %F
+
+[Desktop Action opus]
+Name=Opus
+Icon=audio-x-generic
+Exec=fileconvert audio:opus %F
+
+[Desktop Action flac]
+Name=FLAC
+Icon=audio-x-generic
+Exec=fileconvert audio:flac %F
+
+[Desktop Action wav]
+Name=WAV
+Icon=audio-x-generic
+Exec=fileconvert audio:wav %F
