@@ -82,6 +82,13 @@ def config_path() -> Path:
     return Path(base) / "dolphin-file-converter" / "presets.json"
 
 
+def lo_profile_path() -> Path:
+    """LibreOffice profile kept apart from the user's own, so conversions
+    work while LibreOffice is open."""
+    base = os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache"
+    return Path(base) / "dolphin-file-converter" / "lo-profile"
+
+
 def load(path: Path | None = None) -> Store:
     path = path or config_path()
     try:
