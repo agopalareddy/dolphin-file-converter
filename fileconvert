@@ -1,0 +1,258 @@
+#!/usr/bin/env bash
+# fileconvert: convert files from Dolphin's right-click menu, in the spirit
+# of Tichau/FileConverter on Windows. Wraps ffmpeg, ImageMagick and
+# LibreOffice.
+#
+# Usage: fileconvert PRESET FILE...
+# Each output lands next to its source; existing files are never
+# overwritten. Set FILECONVERT_NOGUI=1 to skip the progress dialog and
+# desktop notification.
+
+set -uo pipefail
+shopt -s nullglob
+
+PRESETS=(
+  audio:mp3 audio:aac audio:ogg audio:opus audio:flac audio:wav
+  video:mp4 video:mp4-small video:webm video:mkv video:gif
+  image:png image:jpg image:webp image:avif image:gif image:ico image:pdf
+  office:pdf office:docx office:odt office:xlsx office:ods office:csv
+  office:pptx office:odp
+  pdf:png pdf:jpg
+)
+
+usage() {
+  printf 'Usage: fileconvert PRESET FILE...\nPresets: %s\n' "${PRESETS[*]}" >&2
+  exit 2
+}
+(($# >= 2)) || usage
+preset=$1
+shift
+
+kind=${preset%%:*}
+fmt=${preset#*:}
+ext=$fmt
+label=${fmt^^}
+first_frame=0
+args=()
+even='scale=trunc(iw/2)*2:trunc(ih/2)*2'
+
+case $preset in
+  audio:mp3)  args=(-vn -c:a libmp3lame -q:a 2) ;;
+  audio:aac)  ext=m4a; args=(-vn -c:a aac -b:a 192k) ;;
+  audio:ogg)  args=(-vn -c:a libvorbis -q:a 5) ;;
+  audio:opus) args=(-vn -c:a libopus -b:a 128k) ;;
+  audio:flac) args=(-vn -c:a flac) ;;
+  audio:wav)  args=(-vn -c:a pcm_s16le) ;;
+  video:mp4)
+    args=(-c:v libx264 -preset medium -crf 20 -pix_fmt yuv420p -vf "$even"
+          -c:a aac -b:a 160k -movflags +faststart) ;;
+  video:mp4-small)
+    ext=mp4; label='MP4 (smaller)'
+    args=(-c:v libx264 -preset slow -crf 28 -pix_fmt yuv420p -vf "$even"
+          -c:a aac -b:a 96k -movflags +faststart) ;;
+  video:webm)
+    args=(-c:v libvpx-vp9 -crf 32 -b:v 0 -row-mt 1 -deadline good -cpu-used 4
+          -c:a libopus -b:a 128k) ;;
+  video:mkv)
+    label='MKV (remux)'
+    args=(-map 0:v -map '0:a?' -map '0:s?' -c copy) ;;
+  video:gif)
+    args=(-an -loop 0 -vf "fps=12,scale='min(iw,640)':-2:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse") ;;
+  image:png)  first_frame=1 ;;
+  image:jpg)  first_frame=1; args=(-background white -flatten -quality 90) ;;
+  image:webp) args=(-quality 90) ;;
+  image:avif) first_frame=1; args=(-quality 70) ;;
+  image:gif)  ;;
+  image:ico)
+    first_frame=1
+    args=(-resize 256x256 -gravity center -extent 256x256
+          -define icon:auto-resize=256,128,64,48,32,16) ;;
+  image:pdf)  ;;
+  office:pdf | office:docx | office:odt | office:xlsx | office:ods | \
+  office:csv | office:pptx | office:odp) ;;
+  pdf:png)    ;;
+  pdf:jpg)    args=(-quality 90) ;;
+  *) usage ;;
+esac
+
+state=${XDG_STATE_HOME:-$HOME/.local/state}/fileconvert
+lo_profile=${XDG_CACHE_HOME:-$HOME/.cache}/fileconvert/lo-profile
+mkdir -p "$state" "${lo_profile%/*}"
+log=$(mktemp "$state/run-XXXXXX.log")
+progfile=$(mktemp "$state/progress-XXXXXX")
+tmp=
+
+gui=0
+if [[ -z ${FILECONVERT_NOGUI:-} && -n ${WAYLAND_DISPLAY:-}${DISPLAY:-} ]] &&
+   command -v kdialog >/dev/null; then
+  gui=1
+fi
+qdbus=$(command -v qdbus6 || command -v qdbus-qt6 || command -v qdbus)
+dlg=()
+
+dlg_call() { ((${#dlg[@]})) && "$qdbus" "${dlg[@]}" "$@" 2>/dev/null; }
+progress() {
+  dlg_call Set '' value "$1" >/dev/null
+  [[ -z ${2:-} ]] || dlg_call setLabelText "$2" >/dev/null
+}
+cancelled() { [[ $(dlg_call wasCancelled) == true ]]; }
+
+notify() { # icon title body
+  if ((gui)) && command -v notify-send >/dev/null; then
+    notify-send -a 'File Converter' -i "$1" "$2" "$3"
+  else
+    printf '%s: %s\n' "$2" "$3" >&2
+  fi
+}
+
+cleanup() {
+  [[ -n $tmp ]] && rm -rf -- "$tmp"
+  rm -f -- "$progfile"
+  dlg_call close >/dev/null
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+
+case $kind in
+  audio | video) need=ffmpeg ;;
+  image | pdf)   need=magick ;;
+  office)        need=soffice ;;
+esac
+if ! command -v "$need" >/dev/null; then
+  notify dialog-error 'Conversion failed' "$need is not installed."
+  exit 1
+fi
+
+unique_path() { # dir base ext
+  local p="$1/$2.$3" i=1
+  while [[ -e $p ]]; do p="$1/$2 ($((i++))).$3"; done
+  printf '%s\n' "$p"
+}
+
+ffmpeg_progress() {
+  ((dur_us > 0)) || return 0
+  local t pct
+  t=$(grep -o 'out_time_us=[0-9]*' "$progfile" | tail -n1)
+  t=${t#*=}
+  [[ -n $t ]] || return 0
+  pct=$((t * 100 / dur_us))
+  ((pct > 100)) && pct=100
+  progress $(((n - 1) * 100 + pct))
+}
+
+# Run a command in its own process group so Cancel can stop all of it
+# (soffice, for one, forks a child that would otherwise outlive a kill).
+run_job() {
+  setsid "$@" >>"$log" 2>&1 </dev/null &
+  local pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    if cancelled; then
+      kill -TERM -- "-$pid" 2>/dev/null
+      wait "$pid"
+      return 130
+    fi
+    ffmpeg_progress
+    sleep 0.3
+  done
+  wait "$pid"
+}
+
+# Move what a conversion left in $tmp next to the source. A multi-page PDF
+# yields page-N files, which become base-N.ext.
+place_outputs() { # dir base
+  local outs=("$tmp"/*) f num
+  ((${#outs[@]})) || return 1
+  if ((${#outs[@]} == 1)); then
+    mv -- "${outs[0]}" "$(unique_path "$1" "$2" "$ext")"
+    return
+  fi
+  for f in "${outs[@]}"; do
+    num=${f##*-}
+    num=${num%.*}
+    mv -- "$f" "$(unique_path "$1" "$2-$num" "$ext")" || return 1
+  done
+}
+
+convert_one() { # src
+  local src=$1 dir name base in rc
+  dir=$(dirname -- "$src")
+  name=$(basename -- "$src")
+  base=${name%.*}
+  [[ -n $base ]] || base=$name
+  tmp=$(mktemp -d "$dir/.fileconvert-XXXXXX") || return 1
+  dur_us=0
+  : >"$progfile"
+
+  case $kind in
+    audio | video)
+      dur_us=$(ffprobe -v error -show_entries format=duration \
+        -of default=nw=1:nk=1 "$src" 2>>"$log" | awk '{ printf "%d", $1 * 1000000 }')
+      dur_us=${dur_us:-0}
+      run_job ffmpeg -hide_banner -nostdin -y -i "$src" "${args[@]}" \
+        -progress "$progfile" -stats_period 0.5 "$tmp/out.$ext" ;;
+    image)
+      in=$src
+      ((first_frame)) && in="$src[0]"
+      run_job magick -background none "$in" -auto-orient "${args[@]}" \
+        "$tmp/out.$ext" ;;
+    office)
+      # flock: concurrent runs must not share the LibreOffice profile.
+      run_job flock "$lo_profile.lock" soffice \
+        -env:UserInstallation="file://$lo_profile" --headless \
+        --convert-to "$ext" --outdir "$tmp" "$src" ;;
+    pdf)
+      run_job magick -density 150 "$src" -background white -alpha remove \
+        -alpha off "${args[@]}" -scene 1 "$tmp/page-%d.$ext" ;;
+  esac
+  rc=$?
+  if ((rc == 0)); then
+    place_outputs "$dir" "$base" || rc=1
+  fi
+  rm -rf -- "$tmp"
+  tmp=
+  return "$rc"
+}
+
+total=$#
+if ((gui)); then
+  read -ra dlg < <(kdialog --title 'File Converter' \
+    --progressbar "Converting to $label" $((total * 100)))
+  dlg_call showCancelButton true >/dev/null
+fi
+
+n=0
+converted=0
+failed=()
+was_cancelled=0
+for src in "$@"; do
+  ((++n))
+  msg="Converting $n of $total to $label: ${src##*/}"
+  progress $(((n - 1) * 100)) "$msg"
+  ((gui)) || printf '%s\n' "$msg" >&2
+  printf '\n== %s -> %s\n' "$src" "$preset" >>"$log"
+  convert_one "$src"
+  rc=$?
+  if ((rc == 130)); then
+    was_cancelled=1
+    break
+  fi
+  if ((rc == 0)); then ((++converted)); else failed+=("${src##*/}"); fi
+done
+dlg_call close >/dev/null
+dlg=()
+
+s=s
+((total == 1)) && s=
+if ((${#failed[@]})); then
+  notify dialog-error 'Some conversions failed' \
+    "Converted $converted of $total to $label. Failed: ${failed[*]}. Log: $log"
+  exit 1
+fi
+rm -f -- "$log"
+if ((was_cancelled)); then
+  notify dialog-cancel 'Conversion cancelled' \
+    "Converted $converted of $total file$s before cancelling."
+  exit 1
+fi
+notify document-export 'Conversion finished' \
+  "Converted $converted file$s to $label."
