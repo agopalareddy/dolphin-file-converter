@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dolphin-file-converter"
+dynamic = ["version"]
+description = "Convert audio, video, images and documents from Dolphin's right-click menu"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = ["PySide6"]
+
+[project.urls]
+Homepage = "https://github.com/agopalareddy/dolphin-file-converter"
+
+[project.scripts]
+fileconverter = "fileconverter.app:main"
+fileconvert = "fileconverter.cli:main"
+
+[tool.setuptools]
+packages = ["fileconverter", "fileconverter.gui"]
+
+[tool.setuptools.dynamic]
+version = { attr = "fileconverter.__version__" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
