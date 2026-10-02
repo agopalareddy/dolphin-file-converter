@@ -139,6 +139,35 @@ def samples(request):
 
 
 @pytest.fixture
+def isolated_home(monkeypatch, tmp_path):
+    """Point config and data dirs at tmp_path so tests never touch the real ones."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    return tmp_path
+
+
+@pytest.fixture
+def make_window(qtbot, isolated_home, lo_profile):
+    from fileconverter.commands import TOOLS
+    from fileconverter.gui.main_window import MainWindow
+    from fileconverter.queue import JobQueue
+    from fileconverter.store import load
+
+    def make(tools=None):
+        win = MainWindow(JobQueue(2, lo_profile), load(),
+                         tools or dict.fromkeys(TOOLS, True))
+        qtbot.addWidget(win)
+        return win
+    return make
+
+
+@pytest.fixture
+def window(make_window):
+    return make_window()
+
+
+@pytest.fixture
 def odd_names(_mp4, _png, _wav, tmp_path):
     """Samples renamed to break naive argument handling."""
     stem = "-lead [1] 100% naïve"

@@ -139,6 +139,22 @@ def test_cancel_libreoffice_leaves_nothing(qtbot, make_queue, sample_odt, lo_pro
     qtbot.waitUntil(no_soffice, timeout=5_000)
 
 
+def test_shutdown_stops_everything(qtbot, make_queue, sample_odt, long_mp4, lo_profile):
+    q = make_queue()
+    office = add(q, sample_odt, "office:pdf", "document")
+    video = add(q, long_mp4, "video:webm", "video")
+    later = add(q, long_mp4, "audio:mp3", "audio")
+    q.workers = 2
+    q.start()
+    qtbot.waitUntil(lambda: q.job(office).state is JobState.RUNNING
+                    and q.job(video).state is JobState.RUNNING, timeout=10_000)
+    q.shutdown()
+    assert {q.job(i).state for i in (office, video, later)} == {JobState.CANCELLED}
+    assert not leftovers(sample_odt.parent) and not leftovers(long_mp4.parent)
+    found = subprocess.run(["pgrep", "-f", lo_profile.as_uri()], capture_output=True)
+    assert found.returncode == 1
+
+
 def test_bad_input_fails_with_log(qtbot, make_queue, tmp_path):
     bad = tmp_path / "bad.mp4"
     bad.write_bytes(b"junk")

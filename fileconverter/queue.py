@@ -156,6 +156,24 @@ class JobQueue(QObject):
         del self._jobs[job_id]
         self.job_removed.emit(job_id)
 
+    def active_count(self) -> int:
+        return sum(j.state in (JobState.WAITING, JobState.RUNNING) for j in self._jobs.values())
+
+    def shutdown(self) -> None:
+        """Cancel everything and wait for processes to exit (call before quitting)."""
+        for job in self.jobs():
+            if job.state is JobState.WAITING:
+                self._jobs[job.id].state = JobState.CANCELLED
+        for jid, run in list(self._runs.items()):
+            run.cancelled = True
+            proc = run.process
+            self._kill(proc)
+            if proc is not None and not proc.waitForFinished(5000):
+                proc.kill()
+                proc.waitForFinished(1000)
+            if jid in self._runs:  # finished signal didn't arrive
+                self._finish(jid, JobState.CANCELLED)
+
     def clear_finished(self) -> None:
         for job in self.jobs():
             if job.state in FINISHED:
