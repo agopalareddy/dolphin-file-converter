@@ -1,0 +1,37 @@
+# Maintainer: Aadarsha Gopala Reddy <https://github.com/agopalareddy>
+
+pkgname=dolphin-file-converter
+pkgver=0.2.0
+pkgrel=1
+pkgdesc="Convert audio, video, images and documents from Dolphin's right-click menu"
+arch=(any)
+url="https://github.com/agopalareddy/dolphin-file-converter"
+license=(MIT)
+depends=(python pyside6 util-linux)
+makedepends=(python-build python-installer python-setuptools python-wheel)
+optdepends=(
+  'ffmpeg: audio and video conversion'
+  'imagemagick: image conversion'
+  'ghostscript: PDF to images'
+  'libreoffice: document conversion'
+  'dolphin: right-click menu'
+  'libnotify: notification when a batch finishes'
+)
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+# Run updpkgsums after tagging v$pkgver.
+sha256sums=('SKIP')
+
+build() {
+  cd "$pkgname-$pkgver"
+  python -m build --wheel --no-isolation
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  python -m installer --destdir="$pkgdir" dist/*.whl
+  install -Dm644 data/fileconverter.desktop "$pkgdir/usr/share/applications/fileconverter.desktop"
+  install -Dm644 data/fileconverter.svg \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/fileconverter.svg"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  PYTHONPATH="$PWD" python -m fileconverter.menus "$pkgdir/usr/share/kio/servicemenus"
+}

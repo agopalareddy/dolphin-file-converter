@@ -1,0 +1,24 @@
+pkgbase = dolphin-file-converter
+	pkgdesc = Convert audio, video, images and documents from Dolphin's right-click menu
+	pkgver = 0.2.0
+	pkgrel = 1
+	url = https://github.com/agopalareddy/dolphin-file-converter
+	arch = any
+	license = MIT
+	makedepends = python-build
+	makedepends = python-installer
+	makedepends = python-setuptools
+	makedepends = python-wheel
+	depends = python
+	depends = pyside6
+	depends = util-linux
+	optdepends = ffmpeg: audio and video conversion
+	optdepends = imagemagick: image conversion
+	optdepends = ghostscript: PDF to images
+	optdepends = libreoffice: document conversion
+	optdepends = dolphin: right-click menu
+	optdepends = libnotify: notification when a batch finishes
+	source = dolphin-file-converter-0.2.0.tar.gz::https://github.com/agopalareddy/dolphin-file-converter/archive/refs/tags/v0.2.0.tar.gz
+	sha256sums = SKIP
+
+pkgname = dolphin-file-converter
