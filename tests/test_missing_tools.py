@@ -53,17 +53,25 @@ def test_check_again_enables_formats(make_window, monkeypatch, sample_mp4):
 
 def test_dialog_command_copy_and_install(qtbot, monkeypatch):
     started = []
-    monkeypatch.setattr(missing_tools_mod, "_start_process",
-                        lambda argv: started.append(argv) or QProcess())
+    monkeypatch.setattr(missing_tools_mod, "_start_detached",
+                        lambda argv: started.append(argv) or True)
     plan = plan_install(["ffmpeg"], {"ID": "arch"})
     dlg = MissingToolsDialog(["ffmpeg"], plan, ["konsole", "-e"])
     qtbot.addWidget(dlg)
     assert dlg.findChild(QLineEdit, "command").text() == "sudo pacman -S --needed ffmpeg"
     dlg.findChild(QPushButton, "copy").click()
     assert QGuiApplication.clipboard().text() == "sudo pacman -S --needed ffmpeg"
-    with qtbot.waitSignal(dlg.install_started):
-        dlg.findChild(QPushButton, "install").click()
+    dlg.findChild(QPushButton, "install").click()
     assert started[0][:4] == ["konsole", "-e", "sh", "-c"]
+    assert "Check again" in dlg.findChild(QLabel, "status").text()
+
+
+def test_dialog_reports_terminal_that_wont_start(qtbot, monkeypatch):
+    monkeypatch.setattr(missing_tools_mod, "_start_detached", lambda argv: False)
+    dlg = MissingToolsDialog(["gs"], plan_install(["gs"], {"ID": "arch"}), ["noterm", "-e"])
+    qtbot.addWidget(dlg)
+    dlg.findChild(QPushButton, "install").click()
+    assert "Couldn't open the terminal (noterm)" in dlg.findChild(QLabel, "status").text()
 
 
 def test_dialog_check_again_signal(qtbot):
@@ -85,6 +93,47 @@ def test_dialog_without_terminal_or_command(qtbot):
     qtbot.addWidget(debian)
     assert not debian.findChild(QPushButton, "install").isEnabled()
     assert "ImageMagick 6" in debian.findChild(QLabel, "notes").text()
+
+
+def test_check_again_updates_dialog(make_window, monkeypatch):
+    monkeypatch.setattr(main_window_mod.installer, "read_os_release", lambda: {"ID": "arch"})
+    win = make_window(tools={**ALL, "ffmpeg": False, "soffice": False})
+    dlg = win.make_install_dialog()
+    monkeypatch.setattr(main_window_mod, "detect_tools", lambda: {**ALL, "soffice": False})
+    dlg.findChild(QPushButton, "check").click()
+    assert dlg.findChild(QLineEdit, "command").text() == "sudo pacman -S --needed libreoffice-fresh"
+    monkeypatch.setattr(main_window_mod, "detect_tools", lambda: dict(ALL))
+    dlg.findChild(QPushButton, "check").click()
+    assert dlg.findChild(QLabel, "done").isVisibleTo(dlg)
+    assert not dlg.findChild(QPushButton, "install").isVisibleTo(dlg)
+
+
+def test_install_terminal_survives_closing_the_app(qtbot, isolated_home, lo_profile,
+                                                  monkeypatch):
+    import subprocess
+    from shiboken6 import delete
+    from fileconverter.installer import InstallPlan
+    from fileconverter.queue import JobQueue
+    from fileconverter.store import load
+    marker = "sleep 31.7"  # harmless stand-in for the package manager
+    monkeypatch.setattr(main_window_mod.installer, "plan_install",
+                        lambda *a: InstallPlan(("X",), ("x",), ("sleep", "31.7"), ()))
+    monkeypatch.setattr(main_window_mod.installer, "find_terminal", lambda: ["env"])
+    # Not registered with qtbot: this test destroys the window itself.
+    win = main_window_mod.MainWindow(JobQueue(1, lo_profile), load(), {**ALL, "gs": False})
+    dlg = win.make_install_dialog()
+    dlg.findChild(QPushButton, "install").click()
+
+    def shell_alive():
+        found = subprocess.run(["pgrep", "-f", f"{marker}; echo"], capture_output=True)
+        return found.returncode == 0
+    try:
+        qtbot.waitUntil(shell_alive, timeout=3_000)
+        delete(win)  # the app quitting destroys the window
+        qtbot.wait(300)
+        assert shell_alive()
+    finally:
+        subprocess.run(["pkill", "-f", marker])
 
 
 def test_convert_message_points_to_bar(make_window, sample_mp4):

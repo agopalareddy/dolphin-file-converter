@@ -264,9 +264,10 @@ class JobQueue(QObject):
             job.error = str(e)
             self._finish(jid, JobState.FAILED)
             return
-        first = stem + ("-1" if job.preset.category == "pdf" else "")
-        if job.output.clash == "skip" and naming.resolve(
-                folder, first, job.preset.ext, "skip") is None:
+        # PDF page counts are unknown until converted, so "skip" is decided
+        # per page when the pages are moved into place.
+        if job.output.clash == "skip" and job.preset.category != "pdf" and naming.resolve(
+                folder, stem, job.preset.ext, "skip") is None:
             self._finish(jid, JobState.SKIPPED)
             return
         try:

@@ -165,8 +165,10 @@ def make_window(qtbot, isolated_home, lo_profile):
         return win
     yield make
     # Stop leftover jobs, or closing the window would block on "Stop converting?".
+    from shiboken6 import isValid
     for win in windows:
-        win.queue.shutdown()
+        if isValid(win):
+            win.queue.shutdown()
 
 
 @pytest.fixture

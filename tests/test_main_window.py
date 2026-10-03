@@ -106,6 +106,15 @@ def test_options_edit_applies_to_selected(window, sample_mp4, sample_png):
     assert window.queue.job(img).preset.id == "image:webp"
 
 
+def test_tool_recheck_keeps_half_typed_options(window, sample_wav):
+    window.add_files([sample_wav])
+    window.table.selectRow(0)
+    trim = window.options_panel.findChild(QLineEdit, "trim_start")
+    trim.setText("1:")  # mid-typing, not valid yet
+    window.recheck_tools()  # e.g. the user switched back to the window
+    assert trim.text() == "1:"
+
+
 def test_change_format_for_selected(window, sample_wav, _wav, tmp_path):
     other = shutil.copy2(_wav, tmp_path / "b.wav")
     a, b = window.add_files([sample_wav, other])

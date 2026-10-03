@@ -17,7 +17,9 @@ def test_read_os_release(tmp_path):
 
 @pytest.mark.parametrize("osr,fam", [
     (ARCH, "arch"), (MINT, "debian"), (FEDORA, "fedora"), ({"ID": "ubuntu"}, "debian"),
-    ({"ID": "rocky", "ID_LIKE": "rhel centos fedora"}, "fedora"), ({"ID": "nixos"}, None), ({}, None),
+    # RHEL clones lack ffmpeg and ImageMagick 7 in their repos: no command.
+    ({"ID": "rocky", "ID_LIKE": "rhel centos fedora"}, None), ({"ID": "rhel"}, None),
+    ({"ID": "nixos"}, None), ({}, None),
 ])
 def test_family(osr, fam):
     assert family(osr) == fam
@@ -41,8 +43,9 @@ def test_debian_only_magick_has_no_command():
 
 
 def test_fedora_ffmpeg_note():
-    plan = plan_install(["ffmpeg"], FEDORA)
-    assert plan.command == ("sudo", "dnf", "install", "ffmpeg")
+    # Stock Fedora has no "ffmpeg" package; dnf would abort the whole command.
+    plan = plan_install(["ffmpeg", "soffice"], FEDORA)
+    assert plan.command == ("sudo", "dnf", "install", "ffmpeg-free", "libreoffice")
     assert "RPM Fusion" in plan.notes[0]
 
 
@@ -52,11 +55,24 @@ def test_unknown_distro_lists_tools_without_command():
 
 
 def test_find_terminal_prefers_env_then_konsole():
+    installed = {"konsole", "xterm", "kitty", "gnome-terminal", "/opt/My Term/term"}
+
     def which(t):
-        return f"/usr/bin/{t}" if t in ("konsole", "xterm") else None
+        return t if t in installed else None
     assert find_terminal(which, {}) == ["konsole", "-e"]
     assert find_terminal(which, {"TERMINAL": "/opt/My Term/term"}) == ["/opt/My Term/term", "-e"]
     assert find_terminal(lambda t: None, {}) is None
+
+
+@pytest.mark.parametrize("value,expected", [
+    ("kitty --single-instance", ["kitty", "--single-instance"]),  # arguments kept
+    ("gnome-terminal", ["gnome-terminal", "--"]),  # its -e takes one string
+    ("not-installed", ["konsole", "-e"]),  # stale value falls back
+])
+def test_find_terminal_handles_odd_env(value, expected):
+    def which(t):
+        return t if t in {"konsole", "kitty", "gnome-terminal"} else None
+    assert find_terminal(which, {"TERMINAL": value}) == expected
 
 
 def test_terminal_argv_keeps_window_open():

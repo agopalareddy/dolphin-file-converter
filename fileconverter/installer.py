@@ -26,7 +26,8 @@ _PACKAGES = {
              "gs": "ghostscript", "soffice": "libreoffice-fresh"},
     "debian": {"ffmpeg": "ffmpeg", "ffprobe": "ffmpeg", "gs": "ghostscript",
                "soffice": "libreoffice"},
-    "fedora": {"ffmpeg": "ffmpeg", "ffprobe": "ffmpeg", "magick": "ImageMagick",
+    # Fedora's own build is ffmpeg-free; plain "ffmpeg" exists only in RPM Fusion.
+    "fedora": {"ffmpeg": "ffmpeg-free", "ffprobe": "ffmpeg-free", "magick": "ImageMagick",
                "gs": "ghostscript", "soffice": "libreoffice"},
 }
 
@@ -36,8 +37,10 @@ _INSTALL = {
     "fedora": ("sudo", "dnf", "install"),
 }
 
-_FAMILY_OF = {"arch": "arch", "debian": "debian", "ubuntu": "debian", "fedora": "fedora",
-              "rhel": "fedora", "centos": "fedora"}
+_FAMILY_OF = {"arch": "arch", "debian": "debian", "ubuntu": "debian", "fedora": "fedora"}
+# RHEL and its clones list "fedora" in ID_LIKE but have no ffmpeg or
+# ImageMagick 7 packages, so a dnf command would only fail.
+_NO_COMMAND = {"rhel", "centos"}
 
 DEBIAN_MAGICK_NOTE = ('Debian and Ubuntu ship ImageMagick 6, which has no "magick" command. '
                       "Install ImageMagick 7 from its website to convert images.")
@@ -74,7 +77,10 @@ def read_os_release(path: Path = Path("/etc/os-release")) -> dict[str, str]:
 
 def family(os_release: Mapping[str, str]) -> str | None:
     """The package-manager family: "arch", "debian", "fedora", or None."""
-    for name in [os_release.get("ID", ""), *os_release.get("ID_LIKE", "").split()]:
+    names = [os_release.get("ID", ""), *os_release.get("ID_LIKE", "").split()]
+    if _NO_COMMAND & set(names):
+        return None
+    for name in names:
         if name in _FAMILY_OF:
             return _FAMILY_OF[name]
     return None
@@ -98,8 +104,18 @@ def plan_install(missing: Iterable[str], os_release: Mapping[str, str]) -> Insta
 def find_terminal(which: Callable[[str], str | None] = shutil.which,
                   env: Mapping[str, str] = os.environ) -> list[str] | None:
     """Argv prefix that opens a terminal running the command appended to it."""
-    if env.get("TERMINAL"):
-        return [env["TERMINAL"], "-e"]
+    value = env.get("TERMINAL", "").strip()
+    if value:
+        # A path that exists as-is (it may contain spaces), else a command
+        # with arguments such as "kitty --single-instance".
+        try:
+            words = [value] if which(value) else shlex.split(value)
+        except ValueError:
+            words = []
+        if words and which(words[0]):
+            # Known terminals need their own flag (gnome-terminal's -e takes
+            # a single string); unknown ones get the common -e.
+            return [*words, *dict(_TERMINALS).get(os.path.basename(words[0]), ["-e"])]
     for name, args in _TERMINALS:
         if which(name):
             return [name, *args]

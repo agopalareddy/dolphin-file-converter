@@ -66,7 +66,7 @@ optional: formats whose tool is missing are greyed out in the app.
 | Package | Used for | Arch | Debian / Ubuntu | Fedora |
 |---|---|---|---|---|
 | PySide6 | the app | `pyside6` | `python3-pyside6.qtwidgets` `python3-pyside6.qtnetwork` `python3-pyside6.qtdbus` | `python3-pyside6` |
-| ffmpeg | audio, video | `ffmpeg` | `ffmpeg` | `ffmpeg` (RPM Fusion) |
+| ffmpeg | audio, video | `ffmpeg` | `ffmpeg` | `ffmpeg-free` (`ffmpeg` from RPM Fusion for MP4) |
 | ImageMagick 7 | images, PDF pages | `imagemagick` | see note | `ImageMagick` |
 | Ghostscript | PDF pages | `ghostscript` | `ghostscript` | `ghostscript` |
 | LibreOffice | documents | `libreoffice-fresh` | `libreoffice` | `libreoffice` |

@@ -16,6 +16,8 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QC
                                QStyleOptionProgressBar, QTableView, QToolBar, QToolTip,
                                QVBoxLayout, QWidget)
 
+from shiboken6 import isValid
+
 from .. import installer, naming
 from ..commands import TOOLS, detect_tools, required_tools
 from ..filetypes import kind_of
@@ -223,25 +225,31 @@ class MainWindow(QMainWindow):
         return list(dict.fromkeys(missing))
 
     def recheck_tools(self) -> None:
-        self.tools = detect_tools()
+        tools = detect_tools()
+        if tools == self.tools:
+            return  # nothing to update; don't reset what the user is typing
+        self.tools = tools
         self.missing_bar.set_missing(self.missing_tools())
         self._refresh()
         self._sync_panel()
+        dialog = getattr(self, "_install_dialog", None)
+        if dialog is not None and isValid(dialog):
+            dialog.refresh(*self._install_plan())
+
+    def _install_plan(self) -> tuple[list[str], installer.InstallPlan]:
+        missing = self.missing_tools()
+        return missing, installer.plan_install(missing, installer.read_os_release())
+
+    def make_install_dialog(self) -> MissingToolsDialog:
+        dialog = MissingToolsDialog(*self._install_plan(), installer.find_terminal(), self)
+        dialog.setAttribute(Qt.WA_DeleteOnClose)
+        dialog.check_requested.connect(self.recheck_tools)
+        self._install_dialog = dialog
+        return dialog
 
     def show_install_dialog(self) -> None:
-        missing = self.missing_tools()
-        plan = installer.plan_install(missing, installer.read_os_release())
-        dialog = MissingToolsDialog(missing, plan, installer.find_terminal(), self)
-        dialog.check_requested.connect(self.recheck_tools)
-        dialog.install_started.connect(self._watch_install)
-        dialog.exec()
+        self.make_install_dialog().exec()
         self.recheck_tools()
-
-    def _watch_install(self, proc) -> None:
-        proc.setParent(self)
-        proc.finished.connect(self.recheck_tools)
-        proc.errorOccurred.connect(
-            lambda _: self.statusBar().showMessage("Couldn't open a terminal."))
 
     def changeEvent(self, event) -> None:
         # Tools may have been installed while the window was in the background.

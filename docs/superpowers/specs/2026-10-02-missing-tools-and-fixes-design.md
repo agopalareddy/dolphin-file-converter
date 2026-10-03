@@ -44,7 +44,7 @@ Detected from `/etc/os-release` `ID` and `ID_LIKE`.
 
 | Tool | Arch (`pacman -S --needed`) | Debian/Ubuntu (`apt install`) | Fedora (`dnf install`) |
 |---|---|---|---|
-| ffmpeg, ffprobe | `ffmpeg` | `ffmpeg` | `ffmpeg` + note: needs RPM Fusion for H.264 |
+| ffmpeg, ffprobe | `ffmpeg` | `ffmpeg` | `ffmpeg-free` + note: needs RPM Fusion for H.264 |
 | magick | `imagemagick` | none + note: ships ImageMagick 6 | `ImageMagick` |
 | gs | `ghostscript` | `ghostscript` | `ghostscript` |
 | soffice | `libreoffice-fresh` | `libreoffice` | `libreoffice` |

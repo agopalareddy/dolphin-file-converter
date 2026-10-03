@@ -197,6 +197,17 @@ def test_workers_limit_and_single_office(qtbot, make_queue, tmp_path, _wav, samp
     assert peak["all"] <= 2 and peak["office"] == 1
 
 
+def test_pdf_skip_is_decided_per_page(qtbot, make_queue, sample_pdf):
+    unrelated = sample_pdf.with_name("doc-1.png")
+    unrelated.write_bytes(b"keep")
+    q = make_queue()
+    jid = add(q, sample_pdf, "pdf:png", "pdf", clash="skip")
+    run_all(q, qtbot)
+    assert q.job(jid).state is JobState.DONE
+    assert q.job(jid).outputs == [sample_pdf.with_name("doc-2.png")]
+    assert unrelated.read_bytes() == b"keep"
+
+
 def test_pdf_pages_named_per_page(qtbot, make_queue, sample_pdf):
     q = make_queue()
     jid = add(q, sample_pdf, "pdf:png", "pdf")
