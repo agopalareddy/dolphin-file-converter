@@ -18,6 +18,7 @@ ffmpeg, ImageMagick and LibreOffice, so it converts whatever those tools can rea
 - [Install](#install)
   - [Dependencies](#dependencies)
 - [Usage](#usage)
+  - [Missing tools](#missing-tools)
   - [Formats](#formats)
   - [CLI](#cli)
 - [Maintainers](#maintainers)
@@ -98,12 +99,20 @@ In the window:
 - **Settings** sets how many files convert at once, turns on moving originals to the
   Trash, and manages presets, including which ones appear in the right-click menu.
 
+### Missing tools
+
+If a conversion tool isn't installed, a bar at the top of the window says which one.
+**Install…** shows the command for your distribution (Arch-based, Debian/Ubuntu or
+Fedora) with a **Copy** button, and **Install in terminal** opens a terminal that runs it;
+you confirm with your password there. File Converter never installs anything by itself.
+The new formats become available as soon as the install finishes.
+
 ### Formats
 
 | Right-click on | Convert to |
 |---|---|
 | Audio | MP3, AAC (M4A), OGG Vorbis, Opus, FLAC, WAV |
-| Video | MP4 (H.264), MP4 (smaller file), WebM (VP9), MKV (no re-encode), animated GIF, and MP3 / AAC / FLAC audio only |
+| Video | MP4 (H.264), MP4 (smaller file), WebM (VP9), MKV (no re-encode), animated GIF, and audio only as MP3, AAC, OGG Vorbis, Opus, FLAC or WAV |
 | Images | PNG, JPG, WebP, AVIF, GIF, ICO, PDF |
 | Documents (DOC, DOCX, ODT, RTF) | PDF, DOCX, ODT |
 | Spreadsheets (XLS, XLSX, ODS, CSV) | PDF, XLSX, ODS, CSV (first sheet) |
@@ -135,8 +144,8 @@ already converting.
 Questions and bug reports are welcome in [GitHub issues](https://github.com/agopalareddy/dolphin-file-converter/issues).
 For a failed conversion, include the text from the **?** button next to the file.
 
-Pull requests are welcome. Please run the tests first; they need ffmpeg, ImageMagick and
-LibreOffice installed, and skip the parts whose tool is missing:
+Pull requests are welcome. Please run the tests first; they need ffmpeg, ImageMagick,
+Ghostscript, LibreOffice and pytest-qt installed, and skip the parts whose tool is missing:
 
 ```sh
 QT_QPA_PLATFORM=offscreen python -m pytest

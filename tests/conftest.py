@@ -91,6 +91,7 @@ def _odt(masters, lo_profile):
 
 @pytest.fixture(scope="session")
 def _pdf(_odt, lo_profile):
+    _need("gs")  # every PDF test reads pages through Ghostscript
     return _soffice(_odt, "pdf", lo_profile)
 
 
