@@ -1,6 +1,5 @@
 """Warning bar and install dialog for missing conversion tools."""
 
-import shlex
 from collections.abc import Iterable
 
 from PySide6.QtCore import QProcess, Qt, Signal  # noqa: F401 (QProcess: _start_detached)
@@ -63,6 +62,11 @@ class MissingToolsBar(QFrame):
         self._dismissed = True
         self.hide()
 
+    def reveal(self, tools: Iterable[str]) -> None:
+        """Show again even if dismissed, e.g. when a conversion needs a tool."""
+        self._dismissed = False
+        self.set_missing(tools)
+
 
 class MissingToolsDialog(QDialog):
     check_requested = Signal()
@@ -109,13 +113,11 @@ class MissingToolsDialog(QDialog):
     def refresh(self, missing: list[str], plan: InstallPlan) -> None:
         """Show the current state, e.g. after tools were installed."""
         self._plan = plan
-        uses: dict[str, str] = {}
-        for tool in missing:
-            name, use = TOOL_INFO[tool]
-            uses.setdefault(name, use)
         self.tools.setText("These tools aren't installed:<br>" + "<br>".join(
-            f"• <b>{name}</b>: converts {use}" for name, use in uses.items()))
-        command = shlex.join(plan.command) if plan.command else ""
+            f"• <b>{name}</b>: converts {use}"
+            + (f" (package <code>{package}</code>)" if package else "")
+            for name, use, package in plan.rows))
+        command = plan.command or ""
         self.how.setText("Install them with this command:" if command else
                          "Install them with your system's package manager.")
         self.command.setText(command)
@@ -131,7 +133,9 @@ class MissingToolsDialog(QDialog):
         self.install.setVisible(not nothing_missing)
         self.install.setEnabled(bool(plan.command and self._terminal))
         if not plan.command:
-            self.install.setToolTip("")
+            self.install.setToolTip(
+                "There's no install command for this system — see the note" if plan.notes
+                else "Install the tools with your system's package manager")
         elif not self._terminal:
             self.install.setToolTip("No terminal found — copy the command instead")
         else:

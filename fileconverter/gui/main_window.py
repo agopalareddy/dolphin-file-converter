@@ -238,7 +238,7 @@ class MainWindow(QMainWindow):
 
     def _install_plan(self) -> tuple[list[str], installer.InstallPlan]:
         missing = self.missing_tools()
-        return missing, installer.plan_install(missing, installer.read_os_release())
+        return missing, installer.plan_for_this_system(missing)
 
     def make_install_dialog(self) -> MissingToolsDialog:
         dialog = MissingToolsDialog(*self._install_plan(), installer.find_terminal(), self)
@@ -383,11 +383,11 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _folder_files(folder: Path) -> list[Path]:
-        # Unsupported files are skipped quietly; hidden folders (thumbnail
-        # caches, leftover work dirs) are not descended into.
+        # Unsupported files are skipped quietly, as are hidden files and
+        # folders: thumbnail caches, leftover work dirs, macOS "._" files.
         return [p for p in sorted(folder.rglob("*"))
                 if p.is_file() and kind_of(p)
-                and not any(part.startswith(".") for part in p.relative_to(folder).parts[:-1])]
+                and not any(part.startswith(".") for part in p.relative_to(folder).parts)]
 
     def _initial_preset(self, kind: str, preset_id: str | None) -> Preset:
         choices = for_kind(self.store.all_presets(), kind)
@@ -487,6 +487,7 @@ class MainWindow(QMainWindow):
         if blocked:
             tool, jobs = next(iter(blocked.items()))
             s = "" if len(jobs) == 1 else "s"
+            self.missing_bar.reveal(self.missing_tools())  # the hint below points at it
             self.statusBar().showMessage(f"Install {tool} to convert {len(jobs)} file{s} — "
                                          "click Install… at the top of the window.")
         self._refresh()

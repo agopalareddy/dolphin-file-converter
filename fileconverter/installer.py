@@ -7,7 +7,7 @@ offers to open a terminal where the user runs it with their own password.
 import os
 import shlex
 import shutil
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -33,7 +33,8 @@ _PACKAGES = {
 
 _INSTALL = {
     "arch": ("sudo", "pacman", "-S", "--needed"),
-    "debian": ("sudo", "apt", "install"),
+    # Stale package lists make apt fail with 404s, so refresh them first.
+    "debian": ("sudo", "apt", "update", "&&", "sudo", "apt", "install"),
     "fedora": ("sudo", "dnf", "install"),
 }
 
@@ -42,15 +43,18 @@ _FAMILY_OF = {"arch": "arch", "debian": "debian", "ubuntu": "debian", "fedora": 
 # ImageMagick 7 packages, so a dnf command would only fail.
 _NO_COMMAND = {"rhel", "centos"}
 
-DEBIAN_MAGICK_NOTE = ('Debian and Ubuntu ship ImageMagick 6, which has no "magick" command. '
+DEBIAN_MAGICK_NOTE = ('This release ships ImageMagick 6, which has no "magick" command. '
                       "Install ImageMagick 7 from its website to convert images.")
 FEDORA_FFMPEG_NOTE = ("Fedora's ffmpeg can't encode H.264 (MP4). Enable RPM Fusion and "
                       "install its ffmpeg for MP4 output.")
+IMMUTABLE_NOTE = ("This system's base is read-only, so its package manager can't add these "
+                  "tools. Install them the way your system recommends, for example in a "
+                  "toolbox or distrobox container.")
 
 _TERMINALS = (
-    ("konsole", ["-e"]), ("gnome-terminal", ["--"]), ("kgx", ["--"]),
-    ("xfce4-terminal", ["-x"]), ("alacritty", ["-e"]), ("kitty", []), ("foot", []),
-    ("xterm", ["-e"]),
+    ("konsole", ["-e"]), ("gnome-terminal", ["--"]), ("kgx", ["--"]), ("ptyxis", ["--"]),
+    ("xfce4-terminal", ["-x"]), ("alacritty", ["-e"]), ("ghostty", ["-e"]),
+    ("wezterm", ["start", "--"]), ("kitty", []), ("foot", []), ("xterm", ["-e"]),
 )
 
 
@@ -58,8 +62,9 @@ _TERMINALS = (
 class InstallPlan:
     tools: tuple[str, ...]
     packages: tuple[str, ...]
-    command: tuple[str, ...] | None
+    command: str | None  # a shell command line
     notes: tuple[str, ...]
+    rows: tuple[tuple[str, str, str | None], ...] = ()  # (tool, what it converts, package)
 
 
 def read_os_release(path: Path = Path("/etc/os-release")) -> dict[str, str]:
@@ -86,19 +91,46 @@ def family(os_release: Mapping[str, str]) -> str | None:
     return None
 
 
-def plan_install(missing: Iterable[str], os_release: Mapping[str, str]) -> InstallPlan:
+def _has_imagemagick7(os_release: Mapping[str, str]) -> bool:
+    # Debian 13 ships ImageMagick 7 with "magick" via update-alternatives;
+    # testing/sid have no VERSION_ID. Ubuntu-based releases still ship 6.
+    if os_release.get("ID") != "debian":
+        return False
+    version = os_release.get("VERSION_ID", "")
+    return not version or (version.isdigit() and int(version) >= 13)
+
+
+def is_immutable(os_release: Mapping[str, str],
+                 ostree_marker: Path = Path("/run/ostree-booted")) -> bool:
+    """Read-only base systems (Fedora Atomic, Bazzite, SteamOS)."""
+    return ostree_marker.exists() or os_release.get("ID") == "steamos"
+
+
+def plan_install(missing: Iterable[str], os_release: Mapping[str, str],
+                 immutable: bool = False) -> InstallPlan:
     wanted = [t for t in TOOLS if t in set(missing)]
     fam = family(os_release)
-    tools = tuple(dict.fromkeys(TOOL_INFO[t][0] for t in wanted))
-    packages = tuple(dict.fromkeys(
-        _PACKAGES[fam][t] for t in wanted if fam and t in _PACKAGES[fam]))
+    table = dict(_PACKAGES.get(fam, {}))
+    if fam == "debian" and _has_imagemagick7(os_release):
+        table["magick"] = "imagemagick"
+    rows = tuple(dict.fromkeys((*TOOL_INFO[t], table.get(t)) for t in wanted))
+    tools = tuple(name for name, _, _ in rows)
+    packages = tuple(dict.fromkeys(pkg for _, _, pkg in rows if pkg))
     notes = []
-    if fam == "debian" and "magick" in wanted:
+    if fam == "debian" and "magick" in wanted and "magick" not in table:
         notes.append(DEBIAN_MAGICK_NOTE)
     if fam == "fedora" and {"ffmpeg", "ffprobe"} & set(wanted):
         notes.append(FEDORA_FFMPEG_NOTE)
-    command = _INSTALL[fam] + packages if fam and packages else None
-    return InstallPlan(tools, packages, command, tuple(notes))
+    command = " ".join(_INSTALL[fam] + packages) if fam and packages else None
+    if immutable:
+        command = None
+        notes.append(IMMUTABLE_NOTE)
+    return InstallPlan(tools, packages, command, tuple(notes), rows)
+
+
+def plan_for_this_system(missing: Iterable[str]) -> InstallPlan:
+    os_release = read_os_release()
+    return plan_install(missing, os_release, immutable=is_immutable(os_release))
 
 
 def find_terminal(which: Callable[[str], str | None] = shutil.which,
@@ -122,6 +154,7 @@ def find_terminal(which: Callable[[str], str | None] = shutil.which,
     return None
 
 
-def terminal_argv(prefix: list[str], command: Sequence[str]) -> list[str]:
-    script = f"{shlex.join(command)}; echo; printf 'Press Enter to close. '; read _"
+def terminal_argv(prefix: list[str], command: str) -> list[str]:
+    # The command line is built only from the fixed tables above.
+    script = f"{command}; echo; printf 'Press Enter to close. '; read _"
     return [*prefix, "sh", "-c", script]

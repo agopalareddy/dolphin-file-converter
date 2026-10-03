@@ -67,14 +67,14 @@ optional: formats whose tool is missing are greyed out in the app.
 |---|---|---|---|---|
 | PySide6 | the app | `pyside6` | `python3-pyside6.qtwidgets` `python3-pyside6.qtnetwork` `python3-pyside6.qtdbus` | `python3-pyside6` |
 | ffmpeg | audio, video | `ffmpeg` | `ffmpeg` | `ffmpeg-free` (`ffmpeg` from RPM Fusion for MP4) |
-| ImageMagick 7 | images, PDF pages | `imagemagick` | see note | `ImageMagick` |
+| ImageMagick 7 | images, PDF pages | `imagemagick` | `imagemagick` (Debian 13+), see note | `ImageMagick` |
 | Ghostscript | PDF pages | `ghostscript` | `ghostscript` | `ghostscript` |
 | LibreOffice | documents | `libreoffice-fresh` | `libreoffice` | `libreoffice` |
 | libnotify | "finished" notification | `libnotify` | `libnotify-bin` | `libnotify` |
 
-Image conversion needs ImageMagick 7, which provides the `magick` command. Debian and
-Ubuntu still ship ImageMagick 6, so image and PDF-page formats stay disabled there unless
-you install ImageMagick 7 another way.
+Image conversion needs ImageMagick 7, which provides the `magick` command. Debian 13 and
+newer include it; Debian 12, Ubuntu and their derivatives still ship ImageMagick 6, so
+image and PDF-page formats stay disabled there unless you install ImageMagick 7 another way.
 
 ## Usage
 

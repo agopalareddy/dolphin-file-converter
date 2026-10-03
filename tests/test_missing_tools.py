@@ -88,11 +88,22 @@ def test_dialog_without_terminal_or_command(qtbot):
     assert not install.isEnabled()
     assert install.toolTip() == "No terminal found — copy the command instead"
 
-    debian = MissingToolsDialog(["magick"], plan_install(["magick"], {"ID": "debian"}),
-                                ["konsole", "-e"])
+    bookworm = {"ID": "debian", "VERSION_ID": "12"}
+    debian = MissingToolsDialog(["magick"], plan_install(["magick"], bookworm), ["konsole", "-e"])
     qtbot.addWidget(debian)
-    assert not debian.findChild(QPushButton, "install").isEnabled()
+    install = debian.findChild(QPushButton, "install")
+    assert not install.isEnabled()
+    assert install.toolTip() == "There's no install command for this system — see the note"
     assert "ImageMagick 6" in debian.findChild(QLabel, "notes").text()
+
+
+def test_dialog_rows_show_packages(qtbot):
+    dlg = MissingToolsDialog(["ffmpeg", "soffice"], plan_install(["ffmpeg", "soffice"],
+                             {"ID": "arch"}), ["konsole", "-e"])
+    qtbot.addWidget(dlg)
+    rows = dlg.findChild(QLabel, "tools").text()
+    assert "converts audio and video (package <code>ffmpeg</code>)" in rows
+    assert "(package <code>libreoffice-fresh</code>)" in rows
 
 
 def test_check_again_updates_dialog(make_window, monkeypatch):
@@ -117,7 +128,7 @@ def test_install_terminal_survives_closing_the_app(qtbot, isolated_home, lo_prof
     from fileconverter.store import load
     marker = "sleep 31.7"  # harmless stand-in for the package manager
     monkeypatch.setattr(main_window_mod.installer, "plan_install",
-                        lambda *a: InstallPlan(("X",), ("x",), ("sleep", "31.7"), ()))
+                        lambda *a, **k: InstallPlan(("X",), ("x",), "sleep 31.7", ()))
     monkeypatch.setattr(main_window_mod.installer, "find_terminal", lambda: ["env"])
     # Not registered with qtbot: this test destroys the window itself.
     win = main_window_mod.MainWindow(JobQueue(1, lo_profile), load(), {**ALL, "gs": False})
@@ -142,3 +153,12 @@ def test_convert_message_points_to_bar(make_window, sample_mp4):
     win.convert()
     message = win.statusBar().currentMessage()
     assert "Install ffmpeg" in message and "click Install…" in message
+
+
+def test_blocked_convert_brings_back_dismissed_bar(make_window, sample_mp4):
+    # The hint points at the bar, so the bar must be there.
+    win = make_window(tools={**ALL, "ffmpeg": False})
+    bar_of(win).findChild(QToolButton, "dismiss").click()
+    win.add_files([sample_mp4])
+    win.convert()
+    assert bar_of(win).isVisibleTo(win)

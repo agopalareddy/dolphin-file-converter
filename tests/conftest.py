@@ -34,6 +34,12 @@ def _qapp_first(qapp):
     return qapp
 
 
+@pytest.fixture(autouse=True)
+def _no_desktop_notifications(monkeypatch):
+    """Offscreen windows are never active, so finished queues would notify."""
+    monkeypatch.setattr("fileconverter.gui.main_window.notify", lambda *a: None)
+
+
 @pytest.fixture(scope="session")
 def masters(tmp_path_factory):
     return tmp_path_factory.mktemp("masters")

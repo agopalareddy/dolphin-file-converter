@@ -1,6 +1,5 @@
 """``fileconvert PRESET FILE...``: convert without opening a window."""
 
-import shlex
 import sys
 from pathlib import Path
 
@@ -34,9 +33,11 @@ def main(argv: list[str] | None = None) -> int:
     missing = [t for t in required_tools(preset) if not tools.get(t)]
     if missing:
         _say(f"{missing[0]} is not installed")
-        plan = installer.plan_install(missing, installer.read_os_release())
+        plan = installer.plan_for_this_system(missing)
         if plan.command:
-            _say(f"Install it with: {shlex.join(plan.command)}")
+            _say(f"Install it with: {plan.command}")
+        for note in plan.notes:
+            _say(note)
         return 1
 
     app = QCoreApplication.instance() or QCoreApplication([])  # noqa: F841 (keeps the loop alive)

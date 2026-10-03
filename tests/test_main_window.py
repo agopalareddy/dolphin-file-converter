@@ -51,6 +51,11 @@ def test_hidden_dirs_skipped_and_empty_folder_reported(window, tmp_path, _png):
         shutil.copy2(_png, pics / sub / "x.png")
     ids = window.add_files([pics])
     assert [window.queue.job(i).src.parent.name for i in ids] == ["keep"]
+    # Hidden files too, e.g. macOS "._" resource forks next to real photos.
+    shutil.copy2(_png, pics / "keep" / "._x.png")
+    shutil.copy2(_png, pics / "keep" / ".hidden.png")
+    ids = window.add_files([pics])
+    assert [window.queue.job(i).src.name for i in ids] == ["x.png"]
     empty = tmp_path / "notes"
     empty.mkdir()
     (empty / "y.txt").write_text("x")
