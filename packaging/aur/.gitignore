@@ -1,0 +1,6 @@
+# AUR build artifacts and downloaded sources
+/dolphin-file-converter*
+/pkg/
+/src/
+*.pkg.tar.*
+*.tar.gz
