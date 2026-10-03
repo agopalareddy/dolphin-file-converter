@@ -19,6 +19,6 @@ pkgbase = dolphin-file-converter
 	optdepends = dolphin: right-click menu
 	optdepends = libnotify: notification when a batch finishes
 	source = dolphin-file-converter-0.2.0.tar.gz::https://github.com/agopalareddy/dolphin-file-converter/archive/refs/tags/v0.2.0.tar.gz
-	sha256sums = SKIP
+	sha256sums = 8858cbd6a4920931fd16a0f19ad1fd17fef62df1115f67e959789a9cccb31d0e
 
 pkgname = dolphin-file-converter
