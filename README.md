@@ -16,6 +16,8 @@ ffmpeg, ImageMagick and LibreOffice, so it converts whatever those tools can rea
 
 - [Background](#background)
 - [Install](#install)
+  - [Arch Linux](#arch-linux)
+  - [From Source](#from-source-all-distributions)
   - [Dependencies](#dependencies)
 - [Usage](#usage)
   - [Missing tools](#missing-tools)
@@ -39,6 +41,20 @@ Trash" setting only ever moves files to the Trash, and only after a successful c
 
 ## Install
 
+### Arch Linux
+
+An AUR package (`dolphin-file-converter`) is fully prepared in [`packaging/aur`](packaging/aur/PKGBUILD). Official publishing to the AUR is currently pending the reopening of new account registrations on `aur.archlinux.org` (temporarily restricted by the Arch Linux DevOps team due to security hardening).
+
+In the meantime, Arch users can build and install the native package directly with `makepkg`:
+
+```sh
+git clone https://github.com/agopalareddy/dolphin-file-converter.git
+cd dolphin-file-converter/packaging/aur
+makepkg -si
+```
+
+### From Source (All Distributions)
+
 Install the [dependencies](#dependencies), then:
 
 ```sh
@@ -55,8 +71,6 @@ where it is. To remove everything it installed:
 ```sh
 ./install.sh --uninstall
 ```
-
-An AUR package for Arch Linux is being prepared in [`packaging/aur`](packaging/aur/PKGBUILD).
 
 ### Dependencies
 
