@@ -3,6 +3,7 @@ import subprocess
 from dataclasses import replace
 
 import pytest
+from PySide6.QtCore import Qt
 
 from fileconverter import queue as queue_mod
 from fileconverter.presets import BUILTIN_BY_ID
@@ -210,6 +211,66 @@ def test_odd_names(qtbot, make_queue, odd_names):
         add(q, odd_names[kind], pid, kind)
     run_all(q, qtbot)
     assert all(j.state is JobState.DONE for j in q.jobs())
+
+
+def test_build_error_fails_job(qtbot, make_queue, sample_png):
+    q = make_queue()
+    bad = replace(BUILTIN_BY_ID["image:png"], options={"resize": "big"})
+    jid = q.add(sample_png, "image", bad, SAME_FOLDER)
+    run_all(q, qtbot, timeout=10_000)
+    assert q.job(jid).state is JobState.FAILED and "resize" in q.job(jid).error
+    assert not leftovers(sample_png.parent)
+
+
+def test_trash_failure_is_reported(qtbot, make_queue, sample_wav, monkeypatch):
+    from fileconverter.gui.queue_model import QueueModel
+    monkeypatch.setattr(queue_mod, "_trash", lambda path: False)
+    q = make_queue()
+    jid = add(q, sample_wav, "audio:mp3", "audio", trash_originals=True)
+    run_all(q, qtbot)
+    job = q.job(jid)
+    assert job.state is JobState.DONE and job.warning == "Couldn't move the original to the Trash"
+    model = QueueModel(q)
+    assert job.warning in model.data(model.index(0, 2), Qt.ToolTipRole)
+
+
+def test_waiting_jobs_pick_up_output_changes(qtbot, make_queue, long_mp4, sample_wav):
+    q = make_queue(workers=1)
+    busy = add(q, long_mp4, "video:webm", "video")
+    waiting = add(q, sample_wav, "audio:mp3", "audio")
+    q.start()
+    qtbot.waitUntil(lambda: q.job(busy).state is JobState.RUNNING, timeout=10_000)
+    assert q.job(waiting).state is JobState.WAITING
+    q.set_output(waiting, replace(SAME_FOLDER, trash_originals=True))
+    assert q.job(waiting).output.trash_originals is True
+    q.shutdown()
+
+
+def test_cancel_escalates_to_sigkill(qtbot, make_queue, sample_png, monkeypatch):
+    # A tool that ignores SIGTERM, like a hung converter.
+    monkeypatch.setattr(queue_mod, "build",
+                        lambda *a, **k: ["sh", "-c", "trap '' TERM; sleep 60 & wait"])
+    q = make_queue()
+    jid = add(q, sample_png, "image:png", "image")
+    q.start()
+    qtbot.waitUntil(lambda: q.job(jid).state is JobState.RUNNING, timeout=5_000)
+    qtbot.wait(300)
+    with qtbot.waitSignal(q.drained, timeout=8_000):
+        q.cancel(jid)
+    assert q.job(jid).state is JobState.CANCELLED and not leftovers(sample_png.parent)
+
+
+def test_processes_are_freed(qtbot, make_queue, sample_wav):
+    from PySide6.QtCore import QProcess
+    q = make_queue()
+    add(q, sample_wav, "audio:mp3", "audio")
+    run_all(q, qtbot)
+    qtbot.waitUntil(lambda: not q.findChildren(QProcess), timeout=2_000)
+
+
+def test_late_finished_signal_for_removed_job_is_ignored(qtbot, make_queue):
+    from PySide6.QtCore import QProcess
+    make_queue()._on_finished(999, QProcess(), 0, False)  # must not raise
 
 
 def test_percent_in_parent_folder(qtbot, make_queue, tmp_path, _png, _pdf):

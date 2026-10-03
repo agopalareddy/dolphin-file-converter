@@ -97,6 +97,19 @@ def test_save_as_preset_updates_store_and_menus(window, sample_mp4, monkeypatch,
     assert "user:whatsapp-video" in menu.read_text()
 
 
+def test_format_change_on_done_row_requeues(qtbot, window, sample_wav):
+    with qtbot.waitSignal(window.queue.drained, timeout=30_000):
+        [jid] = window.add_files([sample_wav], "audio:mp3", start=True)
+    window.table.selectRow(0)
+    window.set_preset_for_selected(window.store.get("audio:flac"))
+    assert window.queue.job(jid).state is JobState.PENDING
+    assert window.convert_button.text() == "Convert 1 file"
+    with qtbot.waitSignal(window.queue.drained, timeout=30_000):
+        window.convert()
+    assert window.queue.job(jid).state is JobState.DONE
+    assert sample_wav.with_suffix(".flac").exists()
+
+
 def test_convert_button_counts_pending(qtbot, window, sample_wav, sample_png):
     window.add_files([sample_wav, sample_png])
     assert window.convert_button.text() == "Convert 2 files" and window.convert_button.isEnabled()

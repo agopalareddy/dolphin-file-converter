@@ -31,7 +31,7 @@ from .queue_model import COL_ACTIONS, COL_FILE, COL_PRESET, COL_STATUS, QueueMod
 from .settings_dialog import SettingsDialog
 
 _CLASH_LABELS = (("Add a number", "rename"), ("Replace it", "overwrite"), ("Skip it", "skip"))
-_EDITABLE = (JobState.PENDING, *FINISHED)
+_EDITABLE = (JobState.PENDING, JobState.WAITING, *FINISHED)
 
 
 class _PresetDelegate(QStyledItemDelegate):
@@ -316,7 +316,7 @@ class MainWindow(QMainWindow):
         save(self.store)
         output = self.output_settings()
         for job in self.queue.jobs():
-            if job.state is JobState.PENDING:
+            if job.state in (JobState.PENDING, JobState.WAITING):
                 self.queue.set_output(job.id, output)
         self._refresh()
 

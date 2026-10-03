@@ -11,6 +11,7 @@ from enum import Enum
 from pathlib import Path
 
 from PySide6.QtCore import QFile, QObject, QProcess, QTimer, Signal
+from shiboken6 import delete, isValid
 
 from . import naming
 from .commands import build, parse_duration, parse_progress, probe_argv
@@ -51,6 +52,10 @@ class Job:
     outputs: list[Path] = field(default_factory=list)
     log: str = ""
     error: str = ""
+    warning: str = ""
+
+    def reset(self) -> None:
+        self.outputs, self.log, self.error, self.warning, self.progress = [], "", "", "", None
 
 
 @dataclass
@@ -66,8 +71,44 @@ class _Run:
     remove_after: bool = False
 
 
-def _trash(path: Path) -> None:
-    QFile.moveToTrash(str(path))
+KILL_AFTER_MS = 5000
+_EDITABLE = (JobState.PENDING, JobState.WAITING, *FINISHED)
+
+
+def _trash(path: Path) -> bool:
+    result = QFile.moveToTrash(str(path))
+    return result[0] if isinstance(result, tuple) else bool(result)
+
+
+class _Process(QProcess):
+    """A tool process that reports back to its queue and frees itself."""
+
+    def __init__(self, queue: "JobQueue", jid: int, probe: bool):
+        super().__init__(queue)
+        self.queue, self.jid, self.probe = queue, jid, probe
+        self.readyReadStandardOutput.connect(self._stdout)
+        self.readyReadStandardError.connect(self._stderr)
+        self.finished.connect(self._finished)
+        self.errorOccurred.connect(self._error)
+
+    def _stdout(self) -> None:
+        self.queue._on_stdout(self.jid, self)
+
+    def _stderr(self) -> None:
+        self.queue._on_stderr(self.jid, self)
+
+    def _finished(self, code: int, _status) -> None:
+        self.queue._on_finished(self.jid, self, code, self.probe)
+        self.dispose()
+
+    def _error(self, err: QProcess.ProcessError) -> None:
+        self.queue._on_error(self.jid, self, err)
+
+    def dispose(self) -> None:
+        # Not deleteLater(): a deferred delete still pending when the queue
+        # is destroyed crashed in ~QProcess. A timer tied to the queue is
+        # dropped with it, and the queue then frees its children itself.
+        QTimer.singleShot(0, self.queue, lambda: delete(self) if isValid(self) else None)
 
 
 class JobQueue(QObject):
@@ -113,13 +154,16 @@ class JobQueue(QObject):
 
     def set_preset(self, job_id: int, preset: Preset) -> None:
         job = self._jobs[job_id]
-        if job.state is JobState.PENDING or job.state in FINISHED:
+        if job.state in _EDITABLE:
             job.preset = preset
+            if job.state in FINISHED:  # a new format means converting again
+                job.reset()
+                job.state = JobState.PENDING
             self.job_changed.emit(job_id)
 
     def set_output(self, job_id: int, output: OutputSettings) -> None:
         job = self._jobs[job_id]
-        if job.state is JobState.PENDING or job.state in FINISHED:
+        if job.state in _EDITABLE:
             job.output = output
             self.job_changed.emit(job_id)
 
@@ -137,12 +181,15 @@ class JobQueue(QObject):
         elif job.state is JobState.RUNNING:
             run = self._runs[job_id]
             run.cancelled = True
-            self._kill(run.process)
+            proc = run.process
+            self._kill(proc)
+            # A hung tool may ignore SIGTERM.
+            QTimer.singleShot(KILL_AFTER_MS, self, lambda: self._kill_if_alive(job_id, proc))
 
     def retry(self, job_id: int) -> None:
         job = self._jobs[job_id]
         if job.state in FINISHED:
-            job.outputs, job.log, job.error, job.progress = [], "", "", None
+            job.reset()
             self._set(job_id, JobState.WAITING)
             self._timer.start()
 
@@ -168,8 +215,8 @@ class JobQueue(QObject):
             run.cancelled = True
             proc = run.process
             self._kill(proc)
-            if proc is not None and not proc.waitForFinished(5000):
-                proc.kill()
+            if proc is not None and not proc.waitForFinished(KILL_AFTER_MS):
+                self._kill(proc, signal.SIGKILL)
                 proc.waitForFinished(1000)
             if jid in self._runs:  # finished signal didn't arrive
                 self._finish(jid, JobState.CANCELLED)
@@ -197,6 +244,13 @@ class JobQueue(QObject):
             self._launch(job)
 
     def _launch(self, job: Job) -> None:
+        try:
+            self._launch_checked(job)
+        except Exception as e:  # e.g. a hand-edited preset with bad options
+            job.error = str(e) or type(e).__name__
+            self._finish(job.id, JobState.FAILED)
+
+    def _launch_checked(self, job: Job) -> None:
         jid = job.id
         if not job.src.exists():
             job.error = "File not found"
@@ -225,12 +279,7 @@ class JobQueue(QObject):
         self._runs[jid] = run
         job.progress = None
         self._set(jid, JobState.RUNNING)
-        try:
-            run.argv = build(job.preset, job.src, workdir, lo_profile=self._lo_profile)
-        except OSError as e:
-            job.error = str(e)
-            self._finish(jid, JobState.FAILED)
-            return
+        run.argv = build(job.preset, job.src, workdir, lo_profile=self._lo_profile)
         if job.preset.category in ("audio", "video"):
             self._start_process(jid, probe_argv(job.src), probe=True)
         else:
@@ -238,23 +287,24 @@ class JobQueue(QObject):
 
     def _start_process(self, jid: int, argv: list[str], probe: bool) -> None:
         run = self._runs[jid]
-        proc = QProcess(self)
+        proc = _Process(self, jid, probe)
         proc.setWorkingDirectory(str(run.workdir))  # magick gets relative names
         run.process, run.stdout = proc, ""
-        proc.readyReadStandardOutput.connect(lambda: self._on_stdout(jid, proc))
-        proc.readyReadStandardError.connect(lambda: self._on_stderr(jid, proc))
-        proc.finished.connect(lambda code, status: self._on_finished(jid, proc, code, probe))
-        proc.errorOccurred.connect(lambda err: self._on_error(jid, proc, err))
         # Own process group, so cancel also stops children (soffice.bin).
         proc.start("setsid", ["-w", *argv])
 
-    def _kill(self, proc: QProcess | None) -> None:
-        if proc is None or proc.state() == QProcess.NotRunning:
+    def _kill(self, proc: QProcess | None, sig: int = signal.SIGTERM) -> None:
+        if proc is None or not isValid(proc) or proc.state() == QProcess.NotRunning:
             return
         try:
-            os.killpg(proc.processId(), signal.SIGTERM)
+            os.killpg(proc.processId(), sig)
         except (ProcessLookupError, PermissionError):
             proc.kill()
+
+    def _kill_if_alive(self, job_id: int, proc: QProcess) -> None:
+        run = self._runs.get(job_id)
+        if run is not None and run.process is proc:
+            self._kill(proc, signal.SIGKILL)
 
     # Process events
 
@@ -281,13 +331,16 @@ class JobQueue(QObject):
 
     def _on_error(self, jid: int, proc: QProcess, err: QProcess.ProcessError) -> None:
         run = self._runs.get(jid)
-        if err == QProcess.FailedToStart and run is not None and run.process is proc:
+        if err != QProcess.FailedToStart:
+            return
+        proc.dispose()  # no finished signal follows a failed start
+        if run is not None and run.process is proc:
             self._jobs[jid].error = f"Couldn't start {self._tool(run.argv)}"
             self._finish(jid, JobState.FAILED)
 
     def _on_finished(self, jid: int, proc: QProcess, code: int, probe: bool) -> None:
-        run, job = self._runs.get(jid), self._jobs[jid]
-        if run is None or run.process is not proc:
+        run, job = self._runs.get(jid), self._jobs.get(jid)
+        if run is None or job is None or run.process is not proc:
             return
         if run.cancelled:
             self._finish(jid, JobState.CANCELLED)
@@ -337,7 +390,8 @@ class JobQueue(QObject):
             return
         if job.output.trash_originals and not any(
                 os.path.samefile(o, job.src) for o in job.outputs if job.src.exists()):
-            _trash(job.src)
+            if not _trash(job.src):
+                job.warning = "Couldn't move the original to the Trash"
         job.progress = 1.0
         self._finish(job.id, JobState.DONE)
 

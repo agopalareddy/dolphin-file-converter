@@ -59,7 +59,7 @@ class QueueModel(QAbstractTableModel):
         flags = super().flags(index)
         if index.column() == COL_PRESET:
             job = self.queue.job(self.job_id(index.row()))
-            if job.state is JobState.PENDING or job.state in FINISHED:
+            if job.state in (JobState.PENDING, JobState.WAITING, *FINISHED):
                 flags |= Qt.ItemIsEditable
         return flags
 
@@ -77,7 +77,7 @@ class QueueModel(QAbstractTableModel):
             if col == COL_STATUS and job.state is JobState.FAILED:
                 return job.error
             if col == COL_STATUS and job.outputs:
-                return "\n".join(str(p) for p in job.outputs)
+                return "\n".join([str(p) for p in job.outputs] + [job.warning] * bool(job.warning))
         if role == Qt.UserRole and col == COL_STATUS:
             return job.progress
         return None
