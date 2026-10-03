@@ -239,6 +239,7 @@ class JobQueue(QObject):
     def _start_process(self, jid: int, argv: list[str], probe: bool) -> None:
         run = self._runs[jid]
         proc = QProcess(self)
+        proc.setWorkingDirectory(str(run.workdir))  # magick gets relative names
         run.process, run.stdout = proc, ""
         proc.readyReadStandardOutput.connect(lambda: self._on_stdout(jid, proc))
         proc.readyReadStandardError.connect(lambda: self._on_stderr(jid, proc))
@@ -309,7 +310,9 @@ class JobQueue(QObject):
             self._collect(job, run)
 
     def _collect(self, job: Job, run: _Run) -> None:
-        produced = sorted((p for p in run.workdir.iterdir() if not p.name.startswith(".")),
+        # Everything except the input link: LibreOffice names its output after
+        # the source, which may itself be a hidden file.
+        produced = sorted((p for p in run.workdir.iterdir() if not p.is_symlink()),
                           key=lambda p: (len(p.name), p.name))
         if not produced:
             job.error = f"{self._tool(run.argv)} produced no output"

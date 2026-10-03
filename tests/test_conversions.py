@@ -27,7 +27,7 @@ def _convert(preset, src, tmp_path, lo_profile):
     work = tmp_path / f"work-{preset.id.replace(':', '-')}"
     work.mkdir()
     subprocess.run(build(preset, src, work, lo_profile=lo_profile),
-                   check=True, capture_output=True)
+                   cwd=work, check=True, capture_output=True)
     return _outputs(work, preset.ext)
 
 

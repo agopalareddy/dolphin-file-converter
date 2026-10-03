@@ -26,6 +26,10 @@ def test_lossless_and_remux_hide_quality_and_trim():
     assert applicable(BUILTIN_BY_ID["office:pdf"]) == frozenset()
 
 
+def test_pdf_jpg_offers_quality():
+    assert applicable(BUILTIN_BY_ID["pdf:jpg"]) == frozenset({"pdf_dpi", "quality"})
+
+
 def test_pdf_pages_offer_dpi_only():
     assert applicable(BUILTIN_BY_ID["pdf:png"]) == frozenset({"pdf_dpi"})
     assert Options.from_dict(BUILTIN_BY_ID["pdf:png"].options).pdf_dpi == 150

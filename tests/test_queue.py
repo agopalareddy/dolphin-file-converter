@@ -212,6 +212,26 @@ def test_odd_names(qtbot, make_queue, odd_names):
     assert all(j.state is JobState.DONE for j in q.jobs())
 
 
+def test_percent_in_parent_folder(qtbot, make_queue, tmp_path, _png, _pdf):
+    folder = tmp_path / "rate 5%x 50%d"
+    folder.mkdir()
+    q = make_queue()
+    img = add(q, shutil.copy2(_png, folder / "pic.png"), "image:webp", "image")
+    pdf = add(q, shutil.copy2(_pdf, folder / "doc.pdf"), "pdf:png", "pdf")
+    run_all(q, qtbot)
+    assert q.job(img).state is JobState.DONE, q.job(img).error
+    assert q.job(pdf).state is JobState.DONE, q.job(pdf).error
+
+
+def test_hidden_office_source(qtbot, make_queue, tmp_path, _odt):
+    src = shutil.copy2(_odt, tmp_path / ".notes.odt")
+    q = make_queue()
+    jid = add(q, src, "office:pdf", "document")
+    run_all(q, qtbot)
+    assert q.job(jid).state is JobState.DONE, q.job(jid).error
+    assert q.job(jid).outputs == [tmp_path / ".notes.pdf"]
+
+
 def test_retry_after_failure(qtbot, make_queue, tmp_path, _wav):
     src = tmp_path / "later.wav"
     q = make_queue()

@@ -90,6 +90,8 @@ def applicable(preset: Preset) -> frozenset[str]:
         names.add("strip_metadata")
     if cat == "pdf":
         names.add("pdf_dpi")
+        if fmt == "jpg":
+            names.add("quality")
     return frozenset(names)
 
 

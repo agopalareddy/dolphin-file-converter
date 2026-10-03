@@ -51,7 +51,15 @@ def test_magick_reads_through_hidden_link(tmp_path):
     argv = build(BUILTIN_BY_ID["image:png"], src, work, lo_profile=tmp_path)
     link = work / ".in.png"
     assert link.is_symlink() and link.resolve() == src.resolve()
-    assert f"{link}[0]" in argv and str(src) not in argv
+    assert ".in.png[0]" in argv and str(src) not in argv
+
+
+def test_magick_argv_is_relative(tmp_path):
+    # Paths of the work dir (e.g. "rate 5%x") must never reach magick.
+    src = tmp_path / "a.png"
+    src.touch()
+    argv = build(BUILTIN_BY_ID["image:png"], src, tmp_path, lo_profile=tmp_path)
+    assert argv[-1] == "out.png" and not any(a.startswith("/") for a in argv)
 
 
 def test_office_uses_lock_and_profile(tmp_path):
@@ -62,9 +70,10 @@ def test_office_uses_lock_and_profile(tmp_path):
 
 
 def test_pdf_pages_pattern_and_dpi(tmp_path):
-    p = replace(BUILTIN_BY_ID["pdf:jpg"], options={"pdf_dpi": 300, "quality": 90})
+    p = replace(BUILTIN_BY_ID["pdf:jpg"], options={"pdf_dpi": 300, "quality": 70})
     argv = build(p, Path("/a.pdf"), tmp_path, lo_profile=tmp_path)
-    assert _flag(argv, "-density") == "300" and argv[-1] == str(tmp_path / "page-%d.jpg")
+    assert _flag(argv, "-density") == "300" and argv[-1] == "page-%d.jpg"
+    assert _flag(argv, "-quality") == "70"
 
 
 def test_parse_progress_and_duration():

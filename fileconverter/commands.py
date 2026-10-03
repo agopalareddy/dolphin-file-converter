@@ -36,10 +36,12 @@ def build(preset: Preset, src: Path, workdir: Path, *, lo_profile: Path) -> list
     opts = Options.from_dict(preset.options)
     if preset.category in ("audio", "video"):
         return _ffmpeg(preset, opts, src, workdir / f"out.{preset.ext}")
+    # ImageMagick also expands "%d"-style escapes in folder names, so it gets
+    # names relative to the work dir and must be run with that as its cwd.
     if preset.category == "image":
-        return _image(preset, opts, _link(src, workdir), workdir / f"out.{preset.ext}")
+        return _image(preset, opts, _link(src, workdir).name, f"out.{preset.ext}")
     if preset.category == "pdf":
-        return _pdf_pages(preset, opts, _link(src, workdir), workdir)
+        return _pdf_pages(preset, opts, _link(src, workdir).name)
     return ["flock", f"{lo_profile}.lock", "soffice",
             f"-env:UserInstallation={lo_profile.as_uri()}", "--headless",
             "--convert-to", preset.ext, "--outdir", str(workdir), str(src)]
@@ -128,9 +130,9 @@ def _codec_args(preset: Preset, o: Options) -> list[str]:
             "split[a][b];[a]palettegen[p];[b][p]paletteuse"]
 
 
-def _image(preset: Preset, o: Options, link: Path, out: Path) -> list[str]:
+def _image(preset: Preset, o: Options, link: str, out: str) -> list[str]:
     fmt = preset.format
-    src = f"{link}[0]" if fmt in _FIRST_FRAME else str(link)
+    src = f"{link}[0]" if fmt in _FIRST_FRAME else link
     argv = ["magick", "-background", "none", src, "-auto-orient"]
     if o.resize:
         argv += ["-resize", o.resize + (">" if "x" in o.resize else "")]
@@ -143,12 +145,12 @@ def _image(preset: Preset, o: Options, link: Path, out: Path) -> list[str]:
                  "-define", "icon:auto-resize=256,128,64,48,32,16"]
     if o.strip_metadata:
         argv.append("-strip")
-    return argv + [str(out)]
+    return argv + [out]
 
 
-def _pdf_pages(preset: Preset, o: Options, link: Path, workdir: Path) -> list[str]:
-    argv = ["magick", "-density", str(o.pdf_dpi), str(link),
+def _pdf_pages(preset: Preset, o: Options, link: str) -> list[str]:
+    argv = ["magick", "-density", str(o.pdf_dpi), link,
             "-background", "white", "-alpha", "remove", "-alpha", "off"]
     if preset.format == "jpg":
         argv += ["-quality", str(encoder_quality("jpg", o.quality or 90))]
-    return argv + ["-scene", "1", str(workdir / f"page-%d.{preset.ext}")]
+    return argv + ["-scene", "1", f"page-%d.{preset.ext}"]
