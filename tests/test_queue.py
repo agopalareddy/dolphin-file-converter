@@ -95,6 +95,16 @@ def test_trash_originals_after_success(qtbot, make_queue, sample_wav, tmp_path, 
     assert trashed == [sample_wav]
 
 
+def test_trim_past_end_fails_and_keeps_original(qtbot, make_queue, sample_wav, trashed):
+    q = make_queue()
+    preset = replace(BUILTIN_BY_ID["audio:mp3"], options={"quality": 78, "trim_start": 600})
+    jid = q.add(sample_wav, "audio", preset, replace(SAME_FOLDER, trash_originals=True))
+    run_all(q, qtbot)
+    job = q.job(jid)
+    assert job.state is JobState.FAILED and "past the end" in job.error
+    assert trashed == [] and not sample_wav.with_suffix(".mp3").exists()
+
+
 def test_unwritable_folder_fails_cleanly(qtbot, make_queue, sample_wav, tmp_path):
     ro = tmp_path / "ro"
     ro.mkdir()

@@ -28,6 +28,9 @@ def test_ext_maps_aac_to_m4a():
     ("a.MP3", "audio"), ("b.mkv", "video"), ("c.HEIC", "image"), ("d.docx", "document"),
     ("e.rtf", "document"), ("f.csv", "spreadsheet"), ("g.pptx", "presentation"),
     ("h.pdf", "pdf"), ("notes.txt", None), ("noext", None),
+    # Formats Dolphin's audio/*, video/*, image/* menus offer that no extension table lists.
+    ("book.m4b", "audio"), ("IMG_0001.CR2", "image"), ("raw.dng", "image"),
+    ("dvd.vob", "video"), ("track.dsf", "audio"),
 ])
 def test_kind_of(name, kind):
     assert kind_of(Path(name)) == kind

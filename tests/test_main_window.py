@@ -31,6 +31,19 @@ def test_folder_expands_recursively(window, tmp_path, _png):
     assert [window.queue.job(i).src.name for i in ids] == ["x.png"]
 
 
+def test_large_folder_adds_quickly(window, tmp_path):
+    import time
+    folder = tmp_path / "many"
+    folder.mkdir()
+    for n in range(800):
+        (folder / f"img{n:04d}.png").touch()
+    window.show()
+    started = time.monotonic()
+    ids = window.add_files([folder])
+    elapsed = time.monotonic() - started
+    assert len(ids) == 800 and elapsed < 4, f"took {elapsed:.1f} s"
+
+
 def test_preset_argument_starts_immediately(qtbot, window, sample_wav):
     with qtbot.waitSignal(window.queue.drained, timeout=30_000):
         [jid] = window.add_files([sample_wav], "audio:flac", start=True)
@@ -147,9 +160,24 @@ def test_failed_job_shows_retry(qtbot, window, tmp_path):
     bad = tmp_path / "bad.mp4"
     bad.write_bytes(b"junk")
     with qtbot.waitSignal(window.queue.drained, timeout=30_000):
-        window.add_files([bad], "video:mp4", start=True)
+        [jid] = window.add_files([bad], "video:mp4", start=True)
     assert window.model.data(window.model.index(0, 2)) == "Failed"
     assert window.model.data(window.model.index(0, 2), Qt.ToolTipRole)
+    assert [name for name, _, _ in window.row_actions(jid)] == ["Retry", "Show error details",
+                                                               "Remove"]
+
+
+def test_row_buttons_respond_to_clicks(qtbot, window, sample_wav):
+    from PySide6.QtCore import QPoint
+    from PySide6.QtTest import QTest
+
+    [jid] = window.add_files([sample_wav])
+    window.show()
+    assert [name for name, _, _ in window.row_actions(jid)] == ["Remove"]
+    rect = window.table.visualRect(window.model.index(0, 3))
+    target = QPoint(rect.right() - 10, rect.center().y())  # rightmost button: Remove
+    QTest.mouseClick(window.table.viewport(), Qt.LeftButton, pos=target)
+    assert window.queue.jobs() == []
 
 
 def test_close_while_converting_asks_then_stops(qtbot, window, long_mp4, monkeypatch):

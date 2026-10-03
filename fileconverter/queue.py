@@ -14,7 +14,7 @@ from PySide6.QtCore import QFile, QObject, QProcess, QTimer, Signal
 
 from . import naming
 from .commands import build, parse_duration, parse_progress, probe_argv
-from .options import Options
+from .options import Options, format_time
 from .presets import Preset
 
 
@@ -292,6 +292,14 @@ class JobQueue(QObject):
             self._finish(jid, JobState.CANCELLED)
         elif probe:
             run.duration = parse_duration(run.stdout) if code == 0 else None
+            start = Options.from_dict(job.preset.options).trim_start or 0
+            if run.duration is not None and start >= run.duration:
+                # ffmpeg would "succeed" with an empty file; with Trash on
+                # that would cost the user the original.
+                job.error = (f"Trim start ({format_time(start)}) is past the end of the "
+                             f"file ({format_time(run.duration)})")
+                self._finish(jid, JobState.FAILED)
+                return
             self._start_process(jid, run.argv, probe=False)
         elif code != 0:
             lines = [ln for ln in job.log.splitlines() if ln.strip()]

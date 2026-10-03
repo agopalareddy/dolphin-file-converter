@@ -1,12 +1,13 @@
 """Which kind of input a file is, and the MIME types each kind covers."""
 
-import mimetypes
 from pathlib import Path
+
+from PySide6.QtCore import QMimeDatabase, QMimeType
 
 KINDS = ("audio", "video", "image", "document", "spreadsheet", "presentation", "pdf")
 
-# Checked before mimetypes: office formats have no common MIME prefix, and
-# some media types are missing from Python's table on some systems.
+# Common extensions, checked before the MIME database for speed and so the
+# usual formats work even where shared-mime-info is incomplete.
 _EXTENSIONS = {
     **dict.fromkeys(("doc", "docx", "odt", "rtf"), "document"),
     **dict.fromkeys(("xls", "xlsx", "ods", "csv"), "spreadsheet"),
@@ -46,14 +47,23 @@ MIME_TYPES = {
 }
 
 
+def _matches(mime: QMimeType, pattern: str) -> bool:
+    names = [mime.name(), *mime.allAncestors()]
+    if pattern.endswith("/*"):
+        return any(n.startswith(pattern[:-1]) for n in names)
+    return pattern in names
+
+
 def kind_of(path: Path) -> str | None:
-    """Return the input kind of ``path`` from its name, or None if unsupported."""
+    """Return the input kind of ``path``, or None if unsupported."""
     kind = _EXTENSIONS.get(path.suffix.lower().lstrip("."))
     if kind:
         return kind
-    mime, _ = mimetypes.guess_type(path.name)
-    if mime:
-        prefix = mime.split("/", 1)[0]
-        if prefix in ("audio", "video", "image"):
-            return prefix
+    # The same shared-mime-info database Dolphin uses to pick the menus, so
+    # anything it offers to convert (.m4b, camera RAW, ...) is accepted.
+    mode = QMimeDatabase.MatchDefault if path.is_file() else QMimeDatabase.MatchExtension
+    mime = QMimeDatabase().mimeTypeForFile(str(path), mode)
+    for kind in KINDS:
+        if any(_matches(mime, pattern) for pattern in MIME_TYPES[kind]):
+            return kind
     return None

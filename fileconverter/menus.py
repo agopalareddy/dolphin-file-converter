@@ -92,10 +92,21 @@ def user_menu_dir() -> Path:
     return Path(base) / "kio" / "servicemenus"
 
 
+def _system_menus_installed() -> bool:
+    dirs = os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share"
+    return any((Path(d) / "kio" / "servicemenus" / "fileconverter-open.desktop").exists()
+               for d in dirs.split(":") if d)
+
+
 def sync_user_menus(st: Store, directory: Path | None = None) -> None:
-    """Shadow the system menus with the user's presets, or remove the shadow."""
+    """Write the user's menus, or drop them when the packaged ones suffice.
+
+    With a system-wide install (the AUR package) user copies only exist to
+    shadow it with custom presets. A per-user install (install.sh) has no
+    system copy, so the user directory must always hold the full set.
+    """
     directory = directory or user_menu_dir()
-    if st.is_customized():
+    if st.is_customized() or not _system_menus_installed():
         write_menus(directory, render_menus(st.all_presets()))
     else:
         for path in directory.glob("fileconverter-*.desktop"):

@@ -1,11 +1,11 @@
 """The File Converter window: queue table, options and output settings."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
-from PySide6.QtCore import QModelIndex, Qt
+from PySide6.QtCore import QEvent, QModelIndex, QRect, Qt
 from PySide6.QtGui import QAction, QGuiApplication, QIcon, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QComboBox,
                                QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QGroupBox,
@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QC
                                QMainWindow, QMessageBox, QPlainTextEdit, QPushButton,
                                QRadioButton, QSizePolicy,
                                QStackedWidget, QStyle, QStyledItemDelegate,
-                               QStyleOptionProgressBar, QTableView, QToolBar, QToolButton,
+                               QStyleOptionProgressBar, QTableView, QToolBar, QToolTip,
                                QVBoxLayout, QWidget)
 
 from .. import naming
@@ -89,6 +89,45 @@ class _ProgressDelegate(QStyledItemDelegate):
         QApplication.style().drawControl(QStyle.CE_ProgressBar, bar, painter)
 
 
+class _ActionsDelegate(QStyledItemDelegate):
+    """Row buttons drawn by the delegate. Real widgets per row made every
+    insert re-lay out all rows, so big folders took minutes to add."""
+
+    SIZE = 28
+
+    def __init__(self, window: "MainWindow"):
+        super().__init__(window)
+        self.window = window
+
+    def _buttons(self, rect: QRect, index: QModelIndex):
+        actions = self.window.row_actions(self.window.model.job_id(index.row()))
+        right = rect.right() - 4
+        for n, action in enumerate(reversed(actions)):
+            x = right - (n + 1) * self.SIZE
+            yield QRect(x, rect.center().y() - self.SIZE // 2, self.SIZE, self.SIZE), action
+
+    def paint(self, painter, option, index):
+        super().paint(painter, option, index)
+        for rect, (_, icon, _) in self._buttons(option.rect, index):
+            QIcon.fromTheme(icon).paint(painter, rect.adjusted(6, 6, -6, -6))
+
+    def editorEvent(self, event, model, option, index):
+        if event.type() == QEvent.MouseButtonRelease and event.button() == Qt.LeftButton:
+            for rect, (_, _, slot) in self._buttons(option.rect, index):
+                if rect.contains(event.position().toPoint()):
+                    slot()
+                    return True
+        return super().editorEvent(event, model, option, index)
+
+    def helpEvent(self, event, view, option, index):
+        if event.type() == QEvent.ToolTip:
+            for rect, (tip, _, _) in self._buttons(option.rect, index):
+                if rect.contains(event.pos()):
+                    QToolTip.showText(event.globalPos(), tip, view)
+                    return True
+        return super().helpEvent(event, view, option, index)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, queue: JobQueue, store: Store, tools: dict[str, bool],
                  parent: QWidget | None = None):
@@ -126,14 +165,15 @@ class MainWindow(QMainWindow):
                                    | QAbstractItemView.EditKeyPressed)
         self.table.setItemDelegateForColumn(COL_PRESET, _PresetDelegate(self))
         self.table.setItemDelegateForColumn(COL_STATUS, _ProgressDelegate(self))
+        self.table.setItemDelegateForColumn(COL_ACTIONS, _ActionsDelegate(self))
         self.table.verticalHeader().hide()
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(COL_FILE, QHeaderView.Stretch)
-        for col in (COL_PRESET, COL_ACTIONS):
-            header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
-        # Fixed width: sizing to the text would squash the progress bar.
-        header.setSectionResizeMode(COL_STATUS, QHeaderView.Fixed)
-        self.table.setColumnWidth(COL_STATUS, 170)
+        # Fixed widths: ResizeToContents re-measures every row on each insert,
+        # which froze the window for minutes on folders of thousands of files.
+        for col, width in ((COL_PRESET, 190), (COL_STATUS, 170), (COL_ACTIONS, 110)):
+            header.setSectionResizeMode(col, QHeaderView.Fixed)
+            self.table.setColumnWidth(col, width)
         self.table.setMinimumHeight(220)
 
         hint = QLabel("Drop files or folders here, or click “Add files…”",
@@ -429,37 +469,31 @@ class MainWindow(QMainWindow):
     # Queue events
 
     def _job_added(self, job_id: int) -> None:
-        self._update_actions(job_id)
+        self._shown_state[job_id] = self.queue.job(job_id).state
         self._refresh()
 
     def _job_changed(self, job_id: int) -> None:
-        if self.queue.job(job_id).state is not self._shown_state.get(job_id):
-            self._update_actions(job_id)
+        state = self.queue.job(job_id).state
+        if state is not self._shown_state.get(job_id):
+            self._shown_state[job_id] = state
             self._refresh()
 
-    def _update_actions(self, job_id: int) -> None:
+    def row_actions(self, job_id: int) -> list[tuple[str, str, Callable[[], None]]]:
+        """Buttons for a row as (tooltip, icon name, action), left to right."""
         job = self.queue.job(job_id)
-        self._shown_state[job_id] = job.state
-        cell = QWidget()
-        row = QHBoxLayout(cell)
-        row.setContentsMargins(2, 0, 2, 0)
-
-        def button(text: str, icon: str, slot, tip: str = "") -> None:
-            b = QToolButton(text=text, icon=QIcon.fromTheme(icon), toolTip=tip or text,
-                            autoRaise=True)
-            b.clicked.connect(slot)
-            row.addWidget(b)
-
+        actions = []
         if job.state is JobState.DONE:
-            button("Open", "document-open-folder", lambda: show_in_folder(job.outputs[0]),
-                   "Show in folder")
+            actions.append(("Show in folder", "document-open-folder",
+                            lambda: show_in_folder(job.outputs[0])))
         elif job.state is JobState.FAILED:
-            button("Retry", "view-refresh", lambda: self.queue.retry(job_id))
-            button("?", "help-about", lambda: self.show_log(job_id), "Show error details")
-        active = job.state in (JobState.WAITING, JobState.RUNNING)
-        button("✕", "process-stop" if active else "list-remove",
-               lambda: self.queue.remove(job_id), "Cancel" if active else "Remove")
-        self.table.setIndexWidget(self.model.index(self.model.row_of(job_id), COL_ACTIONS), cell)
+            actions.append(("Retry", "view-refresh", lambda: self.queue.retry(job_id)))
+            actions.append(("Show error details", "help-about",
+                            lambda: self.show_log(job_id)))
+        if job.state in (JobState.WAITING, JobState.RUNNING):
+            actions.append(("Cancel", "process-stop", lambda: self.queue.cancel(job_id)))
+        else:
+            actions.append(("Remove", "list-remove", lambda: self.queue.remove(job_id)))
+        return actions
 
     def _refresh(self) -> None:
         self.stack.setCurrentIndex(1 if self.model.rowCount() else 0)

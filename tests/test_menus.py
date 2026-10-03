@@ -47,7 +47,16 @@ def test_hidden_presets_left_out(tmp_path):
     assert "audio:wav" not in render_menus(st.all_presets())["fileconverter-audio.desktop"]
 
 
-def test_sync_writes_executable_files_then_cleans_up(tmp_path):
+def _system_dir(tmp_path, with_copy):
+    system = tmp_path / "system"
+    if with_copy:
+        subprocess.run([sys.executable, "-m", "fileconverter.menus",
+                        str(system / "kio" / "servicemenus")], check=True)
+    return system
+
+
+def test_sync_writes_executable_files_then_cleans_up(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_DIRS", str(_system_dir(tmp_path, with_copy=True)))
     st = load(tmp_path / "p.json")
     out = tmp_path / "menus"
     st.add_user_preset("Podcast", BUILTIN_BY_ID["audio:mp3"], {})
@@ -57,6 +66,16 @@ def test_sync_writes_executable_files_then_cleans_up(tmp_path):
     st.user_presets.clear()
     sync_user_menus(st, out)
     assert not list(out.glob("fileconverter-*.desktop"))
+
+
+def test_sync_keeps_menus_when_there_is_no_system_copy(tmp_path, monkeypatch):
+    # install.sh users: the user directory holds the only copy of the menus.
+    monkeypatch.setenv("XDG_DATA_DIRS", str(_system_dir(tmp_path, with_copy=False)))
+    out = tmp_path / "menus"
+    subprocess.run([sys.executable, "-m", "fileconverter.menus", str(out)], check=True)
+    sync_user_menus(load(tmp_path / "p.json"), out)
+    assert (out / "fileconverter-open.desktop").exists()
+    assert (out / "fileconverter-video.desktop").exists()
 
 
 def test_write_removes_stale_files(tmp_path):

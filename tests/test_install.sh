@@ -29,6 +29,11 @@ check "video menu installed" test -f "$data/kio/servicemenus/fileconverter-video
 check "app launcher installed" test -f "$data/applications/fileconverter.desktop"
 check "icon installed" test -f "$data/icons/hicolor/scalable/apps/fileconverter.svg"
 
+# Starting the app syncs the menus; that must not remove the installed ones.
+XDG_DATA_DIRS=$home/no-system-dirs PYTHONPATH=$repo python3 -c \
+  "from fileconverter.menus import sync_user_menus; from fileconverter.store import load; sync_user_menus(load())"
+check "menus survive the app's startup sync" test -f "$data/kio/servicemenus/fileconverter-video.desktop"
+
 "$repo/install.sh" --uninstall >/dev/null
 check "launchers removed" test ! -e "$home/.local/bin/fileconverter" -a ! -e "$home/.local/bin/fileconvert"
 check "menus removed" test -z "$(find "$data/kio/servicemenus" -name 'fileconverter-*' 2>/dev/null)"
