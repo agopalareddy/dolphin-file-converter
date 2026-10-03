@@ -53,5 +53,8 @@ def test_wrong_kind_fails(sample_png, capsys):
 def test_missing_tool(monkeypatch, sample_wav, capsys):
     monkeypatch.setattr("fileconverter.cli.detect_tools",
                         lambda: {"ffmpeg": False, "ffprobe": True})
+    monkeypatch.setattr("fileconverter.installer.read_os_release", lambda: {"ID": "arch"})
     assert main(["audio:mp3", str(sample_wav)]) == 1
-    assert "ffmpeg is not installed" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "ffmpeg is not installed" in err
+    assert "Install it with: sudo pacman -S --needed ffmpeg" in err

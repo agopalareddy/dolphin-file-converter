@@ -1,10 +1,12 @@
 """``fileconvert PRESET FILE...``: convert without opening a window."""
 
+import shlex
 import sys
 from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, QEventLoop
 
+from . import installer
 from .commands import detect_tools, required_tools
 from .filetypes import kind_of
 from .queue import FINISHED, JobQueue, JobState, OutputSettings
@@ -32,6 +34,9 @@ def main(argv: list[str] | None = None) -> int:
     missing = [t for t in required_tools(preset) if not tools.get(t)]
     if missing:
         _say(f"{missing[0]} is not installed")
+        plan = installer.plan_install(missing, installer.read_os_release())
+        if plan.command:
+            _say(f"Install it with: {shlex.join(plan.command)}")
         return 1
 
     app = QCoreApplication.instance() or QCoreApplication([])  # noqa: F841 (keeps the loop alive)

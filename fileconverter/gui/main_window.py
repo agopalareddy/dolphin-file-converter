@@ -16,8 +16,8 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QC
                                QStyleOptionProgressBar, QTableView, QToolBar, QToolTip,
                                QVBoxLayout, QWidget)
 
-from .. import naming
-from ..commands import required_tools
+from .. import installer, naming
+from ..commands import TOOLS, detect_tools, required_tools
 from ..filetypes import kind_of
 from ..menus import sync_user_menus
 from ..notify import notify, show_in_folder
@@ -25,6 +25,7 @@ from ..options import Options
 from ..presets import DEFAULT_FOR_KIND, Preset, for_kind
 from ..queue import FINISHED, JobQueue, JobState, OutputSettings
 from ..store import Store, save
+from .missing_tools import MissingToolsBar, MissingToolsDialog
 from .options_panel import OptionsPanel
 from .queue_model import COL_ACTIONS, COL_FILE, COL_PRESET, COL_STATUS, QueueModel
 from .settings_dialog import SettingsDialog
@@ -193,8 +194,12 @@ class MainWindow(QMainWindow):
         self.convert_button.setDefault(True)
         self.convert_button.clicked.connect(self.convert)
 
+        self.missing_bar = MissingToolsBar()
+        self.missing_bar.install_requested.connect(self.show_install_dialog)
+
         central = QWidget()
         layout = QVBoxLayout(central)
+        layout.addWidget(self.missing_bar)
         layout.addWidget(self.stack, 1)
         layout.addWidget(self.options_box)
         layout.addWidget(self._build_output_box())
@@ -206,8 +211,43 @@ class MainWindow(QMainWindow):
         queue.job_removed.connect(lambda _: self._refresh())
         queue.drained.connect(self._drained)
         self.table.selectionModel().selectionChanged.connect(lambda *_: self._sync_panel())
+        self.missing_bar.set_missing(self.missing_tools())
         self._refresh()
         self._sync_panel()
+
+    # Missing tools
+
+    def missing_tools(self) -> list[str]:
+        """Missing tool keys in TOOLS order, ffprobe folded into ffmpeg."""
+        missing = ("ffmpeg" if t == "ffprobe" else t for t in TOOLS if not self.tools.get(t))
+        return list(dict.fromkeys(missing))
+
+    def recheck_tools(self) -> None:
+        self.tools = detect_tools()
+        self.missing_bar.set_missing(self.missing_tools())
+        self._refresh()
+        self._sync_panel()
+
+    def show_install_dialog(self) -> None:
+        missing = self.missing_tools()
+        plan = installer.plan_install(missing, installer.read_os_release())
+        dialog = MissingToolsDialog(missing, plan, installer.find_terminal(), self)
+        dialog.check_requested.connect(self.recheck_tools)
+        dialog.install_started.connect(self._watch_install)
+        dialog.exec()
+        self.recheck_tools()
+
+    def _watch_install(self, proc) -> None:
+        proc.setParent(self)
+        proc.finished.connect(self.recheck_tools)
+        proc.errorOccurred.connect(
+            lambda _: self.statusBar().showMessage("Couldn't open a terminal."))
+
+    def changeEvent(self, event) -> None:
+        # Tools may have been installed while the window was in the background.
+        if event.type() == QEvent.ActivationChange and self.isActiveWindow():
+            self.recheck_tools()
+        super().changeEvent(event)
 
     # Output settings
 
@@ -416,7 +456,8 @@ class MainWindow(QMainWindow):
         if blocked:
             tool, jobs = next(iter(blocked.items()))
             s = "" if len(jobs) == 1 else "s"
-            self.statusBar().showMessage(f"Install {tool} to convert {len(jobs)} file{s}.")
+            self.statusBar().showMessage(f"Install {tool} to convert {len(jobs)} file{s} — "
+                                         "click Install… at the top of the window.")
         self._refresh()
 
     def retry_selected(self) -> None:
