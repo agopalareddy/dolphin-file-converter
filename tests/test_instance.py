@@ -12,8 +12,24 @@ def _name():
     return f"fc-test-{uuid4()}"
 
 
-def test_server_name_is_per_user():
+def test_server_name_in_runtime_dir(monkeypatch, tmp_path):
+    # $XDG_RUNTIME_DIR is private to the user, unlike /tmp.
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    assert server_name() == str(tmp_path / "dolphin-file-converter.sock")
+
+
+def test_server_name_without_runtime_dir(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "missing"))
+    monkeypatch.setattr("fileconverter.instance.QStandardPaths.writableLocation", lambda _: "")
     assert server_name() == f"dolphin-file-converter-{os.getuid()}"
+
+
+def test_busy_server_still_counts_as_delivered(qtbot):
+    # A running window that is too busy to answer must not get a twin.
+    name = _name()
+    busy = QLocalServer()
+    assert busy.listen(name)
+    assert send_to_running(["/a"], None, name=name, timeout_ms=300) is True
 
 
 def test_no_server_returns_false(qtbot):

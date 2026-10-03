@@ -3,28 +3,39 @@
 import json
 import os
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, QStandardPaths, Signal
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
 
 def server_name() -> str:
+    """Socket path in the user's private runtime dir (not world-writable /tmp)."""
+    runtime = (os.environ.get("XDG_RUNTIME_DIR")
+               or QStandardPaths.writableLocation(QStandardPaths.RuntimeLocation))
+    if runtime and os.path.isdir(runtime):
+        return os.path.join(runtime, "dolphin-file-converter.sock")
     return f"dolphin-file-converter-{os.getuid()}"
 
 
 def send_to_running(files: list[str], preset: str | None, name: str | None = None,
-                    timeout_ms: int = 1000) -> bool:
-    """Pass ``files`` to a running instance; False if none answered."""
+                    timeout_ms: int = 3000) -> bool:
+    """Pass ``files`` to a running instance; False if there is none.
+
+    Once connected and written, the message counts as delivered even without
+    a reply: a window busy with a big folder answers late, and giving up
+    would open a second window that converts the same files again.
+    """
     sock = QLocalSocket()
     sock.connectToServer(name or server_name())
     if not sock.waitForConnected(timeout_ms):
         return False
     sock.write(json.dumps({"files": files, "preset": preset}).encode() + b"\n")
-    sock.waitForBytesWritten(timeout_ms)
+    if not sock.waitForBytesWritten(timeout_ms) and sock.bytesToWrite():
+        return False
     reply = b""
     while not reply.endswith(b"\n") and sock.waitForReadyRead(timeout_ms):
         reply += bytes(sock.readAll())
     sock.disconnectFromServer()
-    return reply == b"ok\n"
+    return reply != b"error\n"
 
 
 class InstanceServer(QObject):
