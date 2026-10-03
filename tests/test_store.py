@@ -1,6 +1,8 @@
 import json
 import os
 
+import pytest
+
 from fileconverter.presets import BUILTIN_BY_ID
 from fileconverter.store import Settings, config_path, load, save
 
@@ -57,6 +59,39 @@ def test_wrong_shape_is_backed_up(tmp_path):
     path.write_text('{"version": 1, "presets": [{"name": "no id"}]}')
     st = load(path)
     assert st.notice and st.user_presets == []
+
+
+def _user(**over):
+    preset = {"id": "user:clip", "name": "Clip", "category": "video", "format": "mp4",
+              "inputs": ["video"], "options": {"quality": 40}}
+    return {**preset, **over}
+
+
+@pytest.mark.parametrize("preset", [
+    _user(options={"quality": "high"}), _user(options={"resize": "big"}),
+    _user(options={"max_height": 7.5}), _user(category="music"), _user(inputs=["sound"]),
+    _user(id="user:Bad Id"), _user(id="video:mp4"),
+])
+def test_invalid_presets_backed_up(tmp_path, preset):
+    path = tmp_path / "presets.json"
+    path.write_text(json.dumps({"version": 1, "presets": [preset]}))
+    st = load(path)
+    assert st.notice and st.user_presets == []
+
+
+def test_valid_preset_loads(tmp_path):
+    path = tmp_path / "presets.json"
+    path.write_text(json.dumps({"version": 1, "presets": [_user()]}))
+    assert load(path).get("user:clip").options == {"quality": 40}
+
+
+@pytest.mark.parametrize("settings", [
+    {"trash_originals": "false"}, {"parallel": "4"}, {"parallel": 0}, {"output_dir": 5},
+])
+def test_invalid_settings_backed_up(tmp_path, settings):
+    path = tmp_path / "presets.json"
+    path.write_text(json.dumps({"version": 1, "settings": settings}))
+    assert load(path).notice
 
 
 def test_workers_automatic():

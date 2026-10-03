@@ -10,7 +10,9 @@ from dataclasses import asdict, dataclass, field, fields, replace
 from pathlib import Path
 from typing import Any
 
+from .filetypes import KINDS
 from .naming import CLASH_RULES
+from .options import Options
 from .presets import BUILTIN_BY_ID, BUILTINS, Preset
 
 BACKUP_NOTICE = ("Your presets file was unreadable and has been backed up to "
@@ -32,9 +34,36 @@ class Settings:
     def from_dict(cls, d: Mapping[str, Any]) -> "Settings":
         known = {f.name for f in fields(cls)}
         s = cls(**{k: v for k, v in d.items() if k in known})
-        if s.clash not in CLASH_RULES or not isinstance(s.pattern, str):
+        if (s.clash not in CLASH_RULES or not isinstance(s.pattern, str)
+                or not isinstance(s.trash_originals, bool)
+                or not (s.output_dir is None or isinstance(s.output_dir, str))
+                or not (s.parallel is None or (_is_int(s.parallel) and s.parallel >= 1))):
             raise ValueError("Invalid settings")
         return s
+
+
+def _is_int(v: Any) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+_USER_ID = re.compile(r"user:[a-z0-9-]+")
+_FORMATS = {cat: {p.format for p in BUILTINS if p.category == cat}
+            for cat in {p.category for p in BUILTINS}}
+
+
+def _check_preset(p: Preset) -> Preset:
+    """Reject user presets that would break a conversion (hand-edited files)."""
+    o = Options.from_dict(p.options)
+    ok = (_USER_ID.fullmatch(p.id) and isinstance(p.name, str) and p.name.strip()
+          and p.format in _FORMATS.get(p.category, ())
+          and p.inputs and set(p.inputs) <= set(KINDS)
+          and all(v is None or _is_int(v) for v in (o.quality, o.max_height, o.pdf_dpi))
+          and all(v is None or (isinstance(v, (int, float)) and not isinstance(v, bool))
+                  for v in (o.trim_start, o.trim_end))
+          and isinstance(o.strip_metadata, bool))
+    if not ok:
+        raise ValueError(f"Invalid preset: {p.id!r}")
+    return p
 
 
 @dataclass
@@ -98,7 +127,7 @@ def load(path: Path | None = None) -> Store:
     try:
         data = json.loads(text)
         return Store(
-            user_presets=[Preset.from_dict(d) for d in data.get("presets", [])],
+            user_presets=[_check_preset(Preset.from_dict(d)) for d in data.get("presets", [])],
             hidden_builtins={i for i in data.get("hidden_builtins", []) if i in BUILTIN_BY_ID},
             settings=Settings.from_dict(data.get("settings", {})),
         )

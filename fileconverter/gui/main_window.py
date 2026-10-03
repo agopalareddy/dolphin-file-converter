@@ -344,15 +344,20 @@ class MainWindow(QMainWindow):
 
     def add_files(self, paths: Sequence[Path], preset_id: str | None = None,
                   start: bool = False) -> list[int]:
-        files, skipped = [], []
+        files, skipped, messages = [], [], []
         for path in (Path(p).absolute() for p in paths):
             if path.is_dir():
-                # Unsupported files inside folders are skipped quietly.
-                files += [p for p in sorted(path.rglob("*")) if p.is_file() and kind_of(p)]
+                found = self._folder_files(path)
+                if not found:
+                    messages.append(f"No convertible files in {path.name}")
+                files += found
             elif kind_of(path):
                 files.append(path)
             else:
                 skipped.append(path.name)
+        if preset_id and preset_id not in {p.id for p in self.store.all_presets()}:
+            messages.append(f"Unknown preset: {preset_id}")
+            start = False  # don't convert to something the user didn't ask for
         ids = []
         output = self.output_settings()
         for src in files:
@@ -361,10 +366,20 @@ class MainWindow(QMainWindow):
         if skipped:
             s = "" if len(skipped) == 1 else "s"
             shown = ", ".join(skipped[:5]) + ("…" if len(skipped) > 5 else "")
-            self.statusBar().showMessage(f"Skipped {len(skipped)} unsupported file{s}: {shown}")
+            messages.append(f"Skipped {len(skipped)} unsupported file{s}: {shown}")
+        if messages:
+            self.statusBar().showMessage("  ·  ".join(messages))
         if start and ids:
             self._start(ids)
         return ids
+
+    @staticmethod
+    def _folder_files(folder: Path) -> list[Path]:
+        # Unsupported files are skipped quietly; hidden folders (thumbnail
+        # caches, leftover work dirs) are not descended into.
+        return [p for p in sorted(folder.rglob("*"))
+                if p.is_file() and kind_of(p)
+                and not any(part.startswith(".") for part in p.relative_to(folder).parts[:-1])]
 
     def _initial_preset(self, kind: str, preset_id: str | None) -> Preset:
         choices = for_kind(self.store.all_presets(), kind)
@@ -405,12 +420,20 @@ class MainWindow(QMainWindow):
         self.options_panel.set_preset(preset)
         self.options_box.setTitle(f"Options for: {preset.name}" if preset else "Options")
 
+    def _base(self, preset: Preset) -> Preset:
+        """The stored preset a job's preset came from, or the job's own copy
+        if that preset has since been deleted."""
+        try:
+            return self.store.get(preset.id)
+        except KeyError:
+            return replace(preset, name=preset.name.removesuffix(" (custom)"))
+
     def _apply_options(self, opts: dict) -> None:
         ids = self.selected_job_ids()
         if not ids:
             return
         ref = self.queue.job(ids[0]).preset.id
-        base = self.store.get(ref)
+        base = self._base(self.queue.job(ids[0]).preset)
         same = Options.from_dict(base.options).to_dict() == opts
         name = base.name if same else f"{base.name} (custom)"
         for jid in ids:
@@ -427,7 +450,7 @@ class MainWindow(QMainWindow):
         if not ok or not name.strip():
             return
         ref = self.queue.job(ids[0]).preset.id
-        preset = self.store.add_user_preset(name, self.store.get(ref),
+        preset = self.store.add_user_preset(name, self._base(self.queue.job(ids[0]).preset),
                                             self.options_panel.options())
         save(self.store)
         try:
@@ -495,7 +518,9 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         active = self.queue.active_count()
-        if active:
+        if active and not self.isVisible():  # nobody to ask
+            self.queue.shutdown()
+        elif active:
             s = "" if active == 1 else "s"
             answer = QMessageBox.question(
                 self, "Stop converting?",

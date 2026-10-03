@@ -63,6 +63,9 @@ def render_menus(presets: Sequence[Preset]) -> dict[str, str]:
             if entries[-1] is None:
                 entries.pop()
         if not [p for p in entries if p]:
+            # Still written: an empty file shadows the packaged menu, which
+            # would otherwise show presets the user hid.
+            files[f"fileconverter-{kind}.desktop"] = _entry(MIME_TYPES[kind], [], True)
             continue
         ids = [_action_id(p) if p else "_SEPARATOR_" for p in entries]
         body = "".join(

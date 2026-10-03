@@ -47,6 +47,11 @@ MIME_TYPES = {
 }
 
 
+# audio/* to shared-mime-info, but lists of links rather than audio.
+_PLAYLISTS = {"audio/x-mpegurl", "audio/x-scpls", "application/vnd.apple.mpegurl",
+              "application/x-mpegurl"}
+
+
 def _matches(mime: QMimeType, pattern: str) -> bool:
     names = [mime.name(), *mime.allAncestors()]
     if pattern.endswith("/*"):
@@ -63,6 +68,8 @@ def kind_of(path: Path) -> str | None:
     # anything it offers to convert (.m4b, camera RAW, ...) is accepted.
     mode = QMimeDatabase.MatchDefault if path.is_file() else QMimeDatabase.MatchExtension
     mime = QMimeDatabase().mimeTypeForFile(str(path), mode)
+    if _PLAYLISTS & {mime.name(), *mime.allAncestors()}:
+        return None
     for kind in KINDS:
         if any(_matches(mime, pattern) for pattern in MIME_TYPES[kind]):
             return kind

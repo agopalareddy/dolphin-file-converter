@@ -41,6 +41,14 @@ def test_every_action_has_a_section():
                 assert f"[Desktop Action {action}]" in text
 
 
+def test_all_hidden_kind_writes_empty_shadow(tmp_path):
+    # An empty user file must shadow the packaged one so the submenu disappears.
+    st = load(tmp_path / "p.json")
+    st.hidden_builtins |= {"pdf:png", "pdf:jpg"}
+    text = render_menus(st.all_presets())["fileconverter-pdf.desktop"]
+    assert "Actions=;" in text and "[Desktop Action" not in text
+
+
 def test_hidden_presets_left_out(tmp_path):
     st = load(tmp_path / "p.json")
     st.hidden_builtins.add("audio:wav")

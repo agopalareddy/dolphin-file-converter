@@ -44,6 +44,36 @@ def test_large_folder_adds_quickly(window, tmp_path):
     assert len(ids) == 800 and elapsed < 4, f"took {elapsed:.1f} s"
 
 
+def test_hidden_dirs_skipped_and_empty_folder_reported(window, tmp_path, _png):
+    pics = tmp_path / "pics"
+    for sub in (".thumbnails", ".fileconverter-abc", "keep"):
+        (pics / sub).mkdir(parents=True)
+        shutil.copy2(_png, pics / sub / "x.png")
+    ids = window.add_files([pics])
+    assert [window.queue.job(i).src.parent.name for i in ids] == ["keep"]
+    empty = tmp_path / "notes"
+    empty.mkdir()
+    (empty / "y.txt").write_text("x")
+    assert window.add_files([empty]) == []
+    assert window.statusBar().currentMessage() == "No convertible files in notes"
+
+
+def test_unknown_preset_reported_and_not_started(window, sample_wav):
+    [jid] = window.add_files([sample_wav], "audio:nope", start=True)
+    assert window.queue.job(jid).state is JobState.PENDING
+    assert window.statusBar().currentMessage() == "Unknown preset: audio:nope"
+
+
+def test_options_after_preset_deleted(window, sample_mp4):
+    from fileconverter.presets import BUILTIN_BY_ID
+    preset = window.store.add_user_preset("Clip", BUILTIN_BY_ID["video:mp4"], {"quality": 40})
+    [jid] = window.add_files([sample_mp4], preset.id)
+    window.store.remove_user_preset(preset.id)
+    window.table.selectRow(0)
+    window.options_panel.findChild(QComboBox, "max_height").setCurrentText("720p")
+    assert window.queue.job(jid).preset.options["max_height"] == 720
+
+
 def test_preset_argument_starts_immediately(qtbot, window, sample_wav):
     with qtbot.waitSignal(window.queue.drained, timeout=30_000):
         [jid] = window.add_files([sample_wav], "audio:flac", start=True)
@@ -197,6 +227,7 @@ def test_close_while_converting_asks_then_stops(qtbot, window, long_mp4, monkeyp
     answers = []
     monkeypatch.setattr(QMessageBox, "question",
                         lambda *a, **k: answers.pop(0))
+    window.show()
     [jid] = window.add_files([long_mp4], "video:webm", start=True)
     qtbot.waitUntil(lambda: window.queue.job(jid).state is JobState.RUNNING, timeout=10_000)
     answers.append(QMessageBox.No)
@@ -204,6 +235,13 @@ def test_close_while_converting_asks_then_stops(qtbot, window, long_mp4, monkeyp
     answers.append(QMessageBox.Yes)
     assert window.close() and window.queue.job(jid).state is JobState.CANCELLED
     assert not list(long_mp4.parent.glob(".fileconverter-*"))
+
+
+def test_closing_hidden_window_stops_jobs_without_asking(qtbot, window, long_mp4, monkeypatch):
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: pytest.fail("asked"))
+    [jid] = window.add_files([long_mp4], "video:webm", start=True)
+    qtbot.waitUntil(lambda: window.queue.job(jid).state is JobState.RUNNING, timeout=10_000)
+    assert window.close() and window.queue.job(jid).state is JobState.CANCELLED
 
 
 def test_close_when_idle_does_not_ask(window, monkeypatch):

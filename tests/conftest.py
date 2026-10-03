@@ -154,12 +154,18 @@ def make_window(qtbot, isolated_home, lo_profile):
     from fileconverter.queue import JobQueue
     from fileconverter.store import load
 
+    windows = []
+
     def make(tools=None):
         win = MainWindow(JobQueue(2, lo_profile), load(),
                          tools or dict.fromkeys(TOOLS, True))
         qtbot.addWidget(win)
+        windows.append(win)
         return win
-    return make
+    yield make
+    # Stop leftover jobs, or closing the window would block on "Stop converting?".
+    for win in windows:
+        win.queue.shutdown()
 
 
 @pytest.fixture
